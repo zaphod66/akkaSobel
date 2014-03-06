@@ -20,48 +20,55 @@ case class WriteFinished(id: Int) extends SobelMessage
 object Sobel extends App {
     
   override def main(args: Array[String]): Unit = {
-    if (args.length != 1) {
-      println("Usage: SobelApp <Image>")
+    if (args.length != 2) {
+      println("Usage: SobelApp <Image> <noOfWorkers>")
       exit(-1)
     }
     
     val filename = args(0)
+    val noOfWorkers = args(1).toInt
     
-    println("SobelApp " + filename + " -> " + "sobel_" + filename)
+    println("SobelApp " + filename + " -> " + "sobel_" + filename + " (workers = " + noOfWorkers + ")")
 
     val image = ImageIO.read(new File(filename))
     println("Image: " + image.getWidth() + " * " + image.getHeight())
     
-    calc(image, 8, filename)
+    calc(image, noOfWorkers, filename)
   }
   
   def calc(image: BufferedImage, nrOfWorkers: Int, fileName: String) {
     val grayImage   = getGrayScale(image)
-    val resultImage = new BufferedImage(image.getWidth, image.getHeight, BufferedImage.TYPE_BYTE_GRAY)
       
     val system = ActorSystem("SobelSystem")
     
-    val master = system.actorOf(Props(new Master(grayImage, resultImage, nrOfWorkers, fileName)), name = "master")
+    val master = system.actorOf(Props(new Master(grayImage, nrOfWorkers, fileName)), name = "master")
 
-    println("Start")
+    println("Master Start")
     master ! Start
   }
   
-  class Master(val srcImage: BufferedImage, val dstImage: BufferedImage, val nrOfWorkers: Int, fileName: String) extends Actor {
+  class Master(val srcImage: BufferedImage, val nrOfWorkers: Int, fileName: String) extends Actor {
     var noOfLines: Int = _
+    var sobelDone: Boolean = _
     val start: Long = System.currentTimeMillis
     val height = srcImage.getHeight
     val width  = srcImage.getWidth
     
-    val writer = context.actorOf(Props[ImageWriter], name = "imageWriter")
+    val writer = context.actorOf(Props(new ImageWriter(start)), name = "imageWriter")
 
     writer ! Write(srcImage, "gray_" + fileName, 1)
-    
-    val workerRouter = context.actorOf(Props(new ImageWorker(srcImage)).withRouter(RoundRobinRouter(nrOfWorkers)), name = "WorkerRouter")
+
+    val tmpImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_BYTE_GRAY)
+    val resImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_BYTE_GRAY)
+
+    val sobelRouter = context.actorOf(Props(new SobelWorker(srcImage)).withRouter(RoundRobinRouter(nrOfWorkers)), name = "sobelRouter")
+    val thresRouter = context.actorOf(Props(new ThresholdWorker(tmpImage, 75)).withRouter(RoundRobinRouter(nrOfWorkers)), name = "thresRouter")
 
     override def receive = {
       case Start => {
-        for (i <- 0 until height) workerRouter ! Work(i)
+        println("Master Start  after " + (System.currentTimeMillis - start).millis)
+        sobelDone = false
+        for (i <- 0 until height) sobelRouter ! Work(i)
       }
       
       case Result(lineNo, lineResult) => {
@@ -69,26 +76,62 @@ object Sobel extends App {
         for (x <- 0 until width) yield {
           val c = lineResult(x).toFloat
           val color = new Color(c, c, c)
-          dstImage.setRGB(x, lineNo, color.getRGB())
+          if (sobelDone) {
+            resImage.setRGB(x, lineNo, color.getRGB())
+          } else {
+            tmpImage.setRGB(x, lineNo, color.getRGB())
+          }
         }
         
         if (noOfLines == height) {
-          println("Writing Result after " + (System.currentTimeMillis - start).millis)
-          writer ! Write(dstImage, "sobel_" + fileName, 2)
+          if (sobelDone) {
+            writer ! Write(resImage, "sobel_" + fileName, 2)
+          } else {
+            sobelDone = true
+            noOfLines = 0
+            println("thresholding after " + (System.currentTimeMillis - start).millis)
+            for (i <- 0 until height) thresRouter ! Work(i)
+          }
         }
       }
       
       case WriteFinished(id) => {
-        println("Write " + id + " finished after " + (System.currentTimeMillis - start).millis)
         if (id == 2) {
-          println("System shutdown")
+          println("Master Finish after " + (System.currentTimeMillis - start).millis)
           context.system.shutdown
         }
       }
     }
   }
   
-  class ImageWorker(image: BufferedImage) extends Actor {
+  class ThresholdWorker(image: BufferedImage, val threshold: Int) extends Actor {
+    val width = image.getWidth
+    
+    override def receive = {
+      case Work(lineNo) => {
+        val lineResult = calcResult(lineNo)
+        sender ! Result(lineNo, lineResult)
+      }
+    }
+    
+    private def calcResult(lineNo: Int): Array[Double] = {
+      var lineResult = new Array[Double](width)
+      
+      for (x <- 0 until width) {
+        val color = new Color(image.getRGB(x, lineNo))
+        
+        if (color.getRed() > threshold) {
+          lineResult(x) = 1.0
+        } else {
+          lineResult(x) = 0.0
+        }
+      }
+      
+      lineResult
+    }
+  }
+  
+  class SobelWorker(image: BufferedImage) extends Actor {
     val width = image.getWidth
     
     val Gy = Array(Array(-1, -2, -1), Array(0, 0, 0), Array(1, 2, 1))
@@ -107,7 +150,10 @@ object Sobel extends App {
       for (x <- 0 until width) {
         val xValue = mapImagePoint(image, x, lineNo, Gx)
         val yValue = mapImagePoint(image, x, lineNo, Gy)
-        val value = Math.min(1.0, Math.sqrt(Math.pow(xValue, 2) + Math.pow(yValue, 2))).toFloat
+        val tmp = Math.sqrt(Math.pow(xValue, 2) + Math.pow(yValue, 2))
+//        val tmp = Math.max(Math.abs(xValue), Math.abs(yValue))
+//        val tmp = Math.abs(yValue)
+        val value = Math.min(1.0, tmp).toFloat
         
         lineResult(x) = value
       }
@@ -131,14 +177,15 @@ object Sobel extends App {
       }
 
       result
-    }  
-
+    }
   }
   
-  class ImageWriter extends Actor {
+  class ImageWriter(val startTime: Long) extends Actor {
     override def receive = {
       case Write(image, fileName, id) => {
+        println("Write " + id + " started  after " + (System.currentTimeMillis - startTime).millis)
         ImageIO.write(image, "png", new File(fileName))
+        println("Write " + id + " finished after " + (System.currentTimeMillis - startTime).millis)
         sender ! WriteFinished(id)
       }
     }
