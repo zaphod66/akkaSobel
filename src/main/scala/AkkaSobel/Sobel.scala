@@ -1,4 +1,4 @@
-package AkkaSobel
+package akkaSobel
 
 import akka.actor._
 import akka.routing.RoundRobinRouter
@@ -20,34 +20,42 @@ case class WriteFinished(id: Int) extends SobelMessage
 object Sobel extends App {
     
   override def main(args: Array[String]): Unit = {
-    if (args.length != 2) {
-      println("Usage: SobelApp <Image> <noOfWorkers>")
-      exit(-1)
+    if (args.length < 2 || args.length > 3) {
+      println("Usage: SobelApp <Image> <noOfWorkers> [<threshold>]")
+      return
     }
     
     val filename = args(0)
     val noOfWorkers = args(1).toInt
     
-    println("SobelApp " + filename + " -> " + "sobel_" + filename + " (workers = " + noOfWorkers + ")")
+    var tmpThreshold = 75
+    if (args.length > 2) {
+      tmpThreshold = args(2).toInt
+    }
+    val threshold = tmpThreshold
+    
+    println("SobelApp " + filename + " -> " + "sobel_" + filename + " (workers = " + noOfWorkers + " threshold = " + threshold + ")")
 
     val image = ImageIO.read(new File(filename))
     println("Image: " + image.getWidth() + " * " + image.getHeight())
+
+    val config = Configuration(image, noOfWorkers, threshold, filename)
     
-    calc(image, noOfWorkers, filename)
+    calc(config)
   }
   
-  def calc(image: BufferedImage, nrOfWorkers: Int, fileName: String) {
-    val grayImage   = getGrayScale(image)
+  def calc(config: Configuration) {
+    val grayImage   = getGrayScale(config.image)
       
     val system = ActorSystem("SobelSystem")
     
-    val master = system.actorOf(Props(new Master(grayImage, nrOfWorkers, fileName)), name = "master")
+    val master = system.actorOf(Props(new Master(grayImage, config.noOfWorkers, config.threshold, config.filename)), name = "master")
 
     println("Master Start")
     master ! Start
   }
   
-  class Master(val srcImage: BufferedImage, val nrOfWorkers: Int, fileName: String) extends Actor {
+  class Master(val srcImage: BufferedImage, val nrOfWorkers: Int, threshold: Int, fileName: String) extends Actor {
     var noOfLines: Int = _
     var sobelDone: Boolean = _
     val start: Long = System.currentTimeMillis
@@ -61,8 +69,8 @@ object Sobel extends App {
     val tmpImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_BYTE_GRAY)
     val resImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_BYTE_GRAY)
 
-    val sobelRouter = context.actorOf(Props(new SobelWorker(srcImage)).withRouter(RoundRobinRouter(nrOfWorkers)), name = "sobelRouter")
-    val thresRouter = context.actorOf(Props(new ThresholdWorker(tmpImage, 75)).withRouter(RoundRobinRouter(nrOfWorkers)), name = "thresRouter")
+    val sobelRouter = context.actorOf(Props(new SobelOp(srcImage)).withRouter(RoundRobinRouter(nrOfWorkers)), name = "sobelRouter")
+    val thresRouter = context.actorOf(Props(new ThresholdOp(tmpImage, threshold)).withRouter(RoundRobinRouter(nrOfWorkers)), name = "thresRouter")
 
     override def receive = {
       case Start => {
@@ -89,7 +97,7 @@ object Sobel extends App {
           } else {
             sobelDone = true
             noOfLines = 0
-            println("thresholding after " + (System.currentTimeMillis - start).millis)
+            println("Thresholding after " + (System.currentTimeMillis - start).millis)
             for (i <- 0 until height) thresRouter ! Work(i)
           }
         }
@@ -101,82 +109,6 @@ object Sobel extends App {
           context.system.shutdown
         }
       }
-    }
-  }
-  
-  class ThresholdWorker(image: BufferedImage, val threshold: Int) extends Actor {
-    val width = image.getWidth
-    
-    override def receive = {
-      case Work(lineNo) => {
-        val lineResult = calcResult(lineNo)
-        sender ! Result(lineNo, lineResult)
-      }
-    }
-    
-    private def calcResult(lineNo: Int): Array[Double] = {
-      var lineResult = new Array[Double](width)
-      
-      for (x <- 0 until width) {
-        val color = new Color(image.getRGB(x, lineNo))
-        
-        if (color.getRed() > threshold) {
-          lineResult(x) = 1.0
-        } else {
-          lineResult(x) = 0.0
-        }
-      }
-      
-      lineResult
-    }
-  }
-  
-  class SobelWorker(image: BufferedImage) extends Actor {
-    val width = image.getWidth
-    
-    val Gy = Array(Array(-1, -2, -1), Array(0, 0, 0), Array(1, 2, 1))
-    val Gx = Array(Array(-1, 0, 1), Array(-2, 0, 2), Array(-1, 0, 1))
-
-    override def receive = {
-      case Work(lineNo) => {
-        val lineResult = calcResult(lineNo)
-        sender ! Result(lineNo, lineResult)
-      }
-    }
-    
-    private def calcResult(lineNo: Int): Array[Double] = {
-      var lineResult = new Array[Double](width)
-      
-      for (x <- 0 until width) {
-        val xValue = mapImagePoint(image, x, lineNo, Gx)
-        val yValue = mapImagePoint(image, x, lineNo, Gy)
-        val tmp = Math.sqrt(Math.pow(xValue, 2) + Math.pow(yValue, 2))
-//        val tmp = Math.max(Math.abs(xValue), Math.abs(yValue))
-//        val tmp = Math.abs(yValue)
-        val value = Math.min(1.0, tmp).toFloat
-        
-        lineResult(x) = value
-      }
-      
-      lineResult
-    }
-    
-    private def mapImagePoint(image: BufferedImage, x: Int, y: Int, matrix: Array[Array[Int]]): Double = {
-      var result = 0.0
-      for {
-        dY <- -1 to 1
-        dX <- -1 to 1
-        cY = y + dY
-        cX = x + dX
-      } {
-        if (cY >= 0 && cY < image.getHeight && cX >= 0 && cX < image.getWidth) {
-          val coefficient = matrix(dY + 1)(dX + 1)
-          val color = new Color(image.getRGB(cX, cY))
-          result += color.getRed.toDouble / 255.0 * coefficient
-        }
-      }
-
-      result
     }
   }
   
