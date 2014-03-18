@@ -10,12 +10,12 @@ import javax.imageio.ImageIO
 import java.awt.image.BufferedImage
 import java.awt.Color
 
-sealed trait SobelMessage
-case object Start extends SobelMessage
-case class Work(lineNo: Int) extends SobelMessage
-case class Result(lineNo: Int, lineResult: Array[Double]) extends SobelMessage
-case class Write(image: BufferedImage, fileName: String, id: Int) extends SobelMessage
-case class WriteFinished(id: Int) extends SobelMessage
+sealed trait OpMessage
+case object Start extends OpMessage
+case class Work(lineNo: Int) extends OpMessage
+case class Result(lineNo: Int, lineResult: Array[(Float,Float,Float)]) extends OpMessage
+case class Write(image: BufferedImage, fileName: String, id: Int) extends OpMessage
+case class WriteFinished(id: Int) extends OpMessage
 
 object Sobel extends App {
     
@@ -34,7 +34,7 @@ object Sobel extends App {
     }
     val threshold = tmpThreshold
     
-    println("SobelApp " + filename + " -> " + "sobel_" + filename + " (workers = " + noOfWorkers + " threshold = " + threshold + ")")
+    println("SobelApp " + filename + " -> " + "end_" + filename + " (workers = " + noOfWorkers + " threshold = " + threshold + ")")
 
     val image = ImageIO.read(new File(filename))
     println("Image: " + image.getWidth() + " * " + image.getHeight())
@@ -45,46 +45,60 @@ object Sobel extends App {
   }
   
   def calc(config: Configuration) {
-    val grayImage   = getGrayScale(config.image)
-      
     val system = ActorSystem("SobelSystem")
     
-    val master = system.actorOf(Props(new Master(grayImage, config.noOfWorkers, config.threshold, config.filename)), name = "master")
+//  val master = system.actorOf(Props(new Master(config.image, config.noOfWorkers, config.threshold, config.filename)), name = "master")
+    val master = system.actorOf(Props(new Master(config)), name = "master")
 
-    println("Master Start")
     master ! Start
   }
   
-  class Master(val srcImage: BufferedImage, val nrOfWorkers: Int, threshold: Int, fileName: String) extends Actor {
+//class Master(val srcImage: BufferedImage, val nrOfWorkers: Int, val threshold: Int, val fileName: String) extends Actor {
+  class Master(val config: Configuration) extends Actor {
+    
+    val srcImage    = config.image
+    val noOfWorkers = config.noOfWorkers
+    val threshold   = config.threshold
+    val fileName    = config.filename
+    
     var noOfLines: Int = _
-    var sobelDone: Boolean = _
+    var firstStepDone: Boolean = _
     val start: Long = System.currentTimeMillis
     val height = srcImage.getHeight
     val width  = srcImage.getWidth
     
+    val FINISH_ID = 0
+    
     val writer = context.actorOf(Props(new ImageWriter(start)), name = "imageWriter")
 
-    writer ! Write(srcImage, "gray_" + fileName, 1)
+    val tmpImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_INT_ARGB)
+    val resImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_INT_ARGB)
 
-    val tmpImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_BYTE_GRAY)
-    val resImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_BYTE_GRAY)
+    val sobelRouter    = context.actorOf(Props(new SobelOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
+    val thresRouter    = context.actorOf(Props(new ThresholdOp(tmpImage, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
 
-    val sobelRouter = context.actorOf(Props(new SobelOp(srcImage)).withRouter(RoundRobinRouter(nrOfWorkers)), name = "sobelRouter")
-    val thresRouter = context.actorOf(Props(new ThresholdOp(tmpImage, threshold)).withRouter(RoundRobinRouter(nrOfWorkers)), name = "thresRouter")
-
+    val sharpenRouter1 = context.actorOf(Props(new SharpenOp(srcImage, -1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter1")
+    val sharpenRouter2 = context.actorOf(Props(new SharpenOp(tmpImage, -1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter2")
+    
+    val noOp1          = context.actorOf(Props(new NoOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOp1Router")
+    val noOp2          = context.actorOf(Props(new NoOp(tmpImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOp2Router")
+    
+    val firstRouter    = sharpenRouter1
+    val secondRouter   = thresRouter
+    
     override def receive = {
       case Start => {
         println("Master Start  after " + (System.currentTimeMillis - start).millis)
-        sobelDone = false
-        for (i <- 0 until height) sobelRouter ! Work(i)
+        firstStepDone = false
+        for (i <- 0 until height) firstRouter ! Work(i)
       }
       
       case Result(lineNo, lineResult) => {
         noOfLines += 1
         for (x <- 0 until width) yield {
-          val c = lineResult(x).toFloat
-          val color = new Color(c, c, c)
-          if (sobelDone) {
+          val c = lineResult(x)
+          val color = new Color(c._1, c._2, c._3)
+          if (firstStepDone) {
             resImage.setRGB(x, lineNo, color.getRGB())
           } else {
             tmpImage.setRGB(x, lineNo, color.getRGB())
@@ -92,19 +106,21 @@ object Sobel extends App {
         }
         
         if (noOfLines == height) {
-          if (sobelDone) {
-            writer ! Write(resImage, "sobel_" + fileName, 2)
+          if (firstStepDone) {
+            println("Second step done after " + (System.currentTimeMillis - start).millis)
+            writer ! Write(resImage, "end_" + fileName, FINISH_ID)
           } else {
-            sobelDone = true
+            firstStepDone = true
             noOfLines = 0
-            println("Thresholding after " + (System.currentTimeMillis - start).millis)
-            for (i <- 0 until height) thresRouter ! Work(i)
+            println("First step done after " + (System.currentTimeMillis - start).millis)
+          //writer ! Write(tmpImage, "tmp_" + fileName, 1)
+            for (i <- 0 until height) secondRouter ! Work(i)
           }
         }
       }
       
       case WriteFinished(id) => {
-        if (id == 2) {
+        if (id == FINISH_ID) {
           println("Master Finish after " + (System.currentTimeMillis - start).millis)
           context.system.shutdown
         }
@@ -115,7 +131,7 @@ object Sobel extends App {
   class ImageWriter(val startTime: Long) extends Actor {
     override def receive = {
       case Write(image, fileName, id) => {
-        println("Write " + id + " started  after " + (System.currentTimeMillis - startTime).millis)
+        println("Write " + id + " (" + fileName + ") started  after " + (System.currentTimeMillis - startTime).millis)
         ImageIO.write(image, "png", new File(fileName))
         println("Write " + id + " finished after " + (System.currentTimeMillis - startTime).millis)
         sender ! WriteFinished(id)
