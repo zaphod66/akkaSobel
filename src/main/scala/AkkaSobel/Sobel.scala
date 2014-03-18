@@ -47,13 +47,11 @@ object Sobel extends App {
   def calc(config: Configuration) {
     val system = ActorSystem("SobelSystem")
     
-//  val master = system.actorOf(Props(new Master(config.image, config.noOfWorkers, config.threshold, config.filename)), name = "master")
     val master = system.actorOf(Props(new Master(config)), name = "master")
 
     master ! Start
   }
   
-//class Master(val srcImage: BufferedImage, val nrOfWorkers: Int, val threshold: Int, val fileName: String) extends Actor {
   class Master(val config: Configuration) extends Actor {
     
     val srcImage    = config.image
@@ -77,13 +75,13 @@ object Sobel extends App {
     val sobelRouter    = context.actorOf(Props(new SobelOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
     val thresRouter    = context.actorOf(Props(new ThresholdOp(tmpImage, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
 
-    val sharpenRouter1 = context.actorOf(Props(new SharpenOp(srcImage, -1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter1")
-    val sharpenRouter2 = context.actorOf(Props(new SharpenOp(tmpImage, -1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter2")
+    val sharpenRouter1 = context.actorOf(Props(new SharpenOp(srcImage, 1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter1")
+    val sharpenRouter2 = context.actorOf(Props(new SharpenOp(tmpImage, 1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter2")
     
     val noOp1          = context.actorOf(Props(new NoOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOp1Router")
     val noOp2          = context.actorOf(Props(new NoOp(tmpImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOp2Router")
     
-    val firstRouter    = sharpenRouter1
+    val firstRouter    = sobelRouter
     val secondRouter   = thresRouter
     
     override def receive = {
