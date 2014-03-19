@@ -13,7 +13,7 @@ trait Worker extends Actor {
     }
   }
     
-  def mapImagePoint(image: BufferedImage, x: Int, y: Int, matrix: Array[Array[Int]]): (Double, Double, Double) = {
+  def mapImagePoint(image: BufferedImage, x: Int, y: Int, matrix: Array[Array[Double]]): (Double, Double, Double) = {
     var result = (0.0, 0.0, 0.0)
     for {
       dY <- -1 to 1
@@ -38,15 +38,13 @@ trait Worker extends Actor {
   }
     
   def calcResult(lineNo: Int): Array[(Float,Float,Float)]
-  
-  def getName: String
 }
 
 class SobelOp(image: BufferedImage) extends Worker {
   val width = image.getWidth
     
-  val Gy = Array(Array(-1, -2, -1), Array(0, 0, 0), Array(1, 2, 1))
-  val Gx = Array(Array(-1, 0, 1), Array(-2, 0, 2), Array(-1, 0, 1))
+  val Gy = Array(Array(-1.0, -2.0, -1.0), Array( 0.0, 0.0, 0.0), Array( 1.0, 2.0, 1.0))
+  val Gx = Array(Array(-1.0,  0.0,  1.0), Array(-2.0, 0.0, 2.0), Array(-1.0, 0.0, 1.0))
   
   override def calcResult(lineNo: Int): Array[(Float, Float, Float)] = {
       var lineResult = new Array[(Float, Float, Float)](width)
@@ -64,8 +62,6 @@ class SobelOp(image: BufferedImage) extends Worker {
       
       lineResult
   }
-  
-  override def getName = "Sobel"
 }
 
 class ThresholdOp(image: BufferedImage, val threshold: Int) extends Worker {
@@ -86,24 +82,25 @@ class ThresholdOp(image: BufferedImage, val threshold: Int) extends Worker {
 
     lineResult
   }
-  
-  override def getName = "Threshold"
 }
 
 class SharpenOp(image: BufferedImage, val c: Double) extends Worker {
   val width = image.getWidth
 
-//val F1 = Array(Array( 0, 1, 0), Array( 1,-4, 1), Array( 0, 1, 0))
-//val F2 = Array(Array( 1, 1, 1), Array( 1,-8, 1), Array( 1, 1, 1))
+//val F1 = Array(Array( 0.0, 1.0, 0.0), Array( 1.0,-4.0, 1.0), Array( 0.0, 1.0, 0.0))
+//val F2 = Array(Array( 1.0, 1.0, 1.0), Array( 1.0,-8.0, 1.0), Array( 1.0, 1.0, 1.0))
   
-  val F1 = Array(Array( 0, 1, 0), Array( 1,-5, 1), Array( 0, 1, 0))
-  val F2 = Array(Array( 1, 1, 1), Array( 1,-9, 1), Array( 1, 1, 1))
+  val F1 = Array(Array( 0.0, 1.0, 0.0), Array( 1.0,-5.0, 1.0), Array( 0.0, 1.0, 0.0))
+  val F2 = Array(Array( 1.0, 1.0, 1.0), Array( 1.0,-9.0, 1.0), Array( 1.0, 1.0, 1.0))
+  
+  val F1c = F1.map(_.map(_ * c))
+  val F2c = F2.map(_.map(_ * c))
   
   override def calcResult(lineNo: Int): Array[(Float, Float, Float)] = {
     var lineResult = new Array[(Float, Float, Float)](width)
 
     for (x <- 0 until width) {
-      val pixel = mapImagePoint(image, x, lineNo, F1)
+      val pixel = mapImagePoint(image, x, lineNo, F1c)
       val r = Math.min(1.0, Math.abs(pixel._1)).toFloat
       val g = Math.min(1.0, Math.abs(pixel._2)).toFloat
       val b = Math.min(1.0, Math.abs(pixel._3)).toFloat
@@ -112,8 +109,6 @@ class SharpenOp(image: BufferedImage, val c: Double) extends Worker {
     
     lineResult
   }
-  
-  override def getName = "Sharpen"
 }
 
 class NoOp(image: BufferedImage) extends Worker {
@@ -131,6 +126,4 @@ class NoOp(image: BufferedImage) extends Worker {
     
     lineResult
   }
-  
-  override def getName = "NoOp"
 }
