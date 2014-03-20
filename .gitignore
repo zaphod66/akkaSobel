@@ -19,6 +19,7 @@ project/plugins/project/
 .idea_modules/
 .project
 .settings/
+.worksheet/
 *.sublime-project
 *.sublime-workspace
 /.env
