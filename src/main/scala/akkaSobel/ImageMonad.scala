@@ -68,9 +68,8 @@ object ImageMonad {
     for (y <- 0 until height) {
       for (x <- 0 until width) {
         val color = new Color(im.getRGB(x, y))
-          val thres = ( color.getRed + color.getGreen + color.getBlue ) / 3
-          val value = if (thres > threshold) 255 else 0
-          val newcol = new Color(value, value, value)
+          val thres  = ( color.getRed + color.getGreen + color.getBlue ) / 3
+          val newcol = if (thres > threshold) Color.WHITE else Color.BLACK
           
           tmpImage.setRGB(x, y, newcol.getRGB)
       }
