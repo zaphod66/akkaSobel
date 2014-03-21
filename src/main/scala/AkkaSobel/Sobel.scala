@@ -75,14 +75,14 @@ object Sobel extends App {
     val sobelRouter    = context.actorOf(Props(new SobelOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
     val thresRouter    = context.actorOf(Props(new ThresholdOp(tmpImage, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
 
-    val sharpenRouter1 = context.actorOf(Props(new SharpenOp(srcImage, 1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter1")
-    val sharpenRouter2 = context.actorOf(Props(new SharpenOp(tmpImage, 1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter2")
+    val sharpenRouter1 = context.actorOf(Props(new SharpenOp(srcImage, 0.1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter1")
+    val sharpenRouter2 = context.actorOf(Props(new SharpenOp(tmpImage, 0.0)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter2")
     
     val noOp1          = context.actorOf(Props(new NoOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOp1Router")
     val noOp2          = context.actorOf(Props(new NoOp(tmpImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOp2Router")
     
-    val firstRouter    = sobelRouter
-    val secondRouter   = thresRouter
+    val firstRouter    = sharpenRouter1
+    val secondRouter   = noOp2
     
     override def receive = {
       case Start => {

@@ -38,6 +38,19 @@ trait Worker extends Actor {
   }
     
   def calcResult(lineNo: Int): Array[(Float,Float,Float)]
+  
+  def sumKernel(k1: Array[Array[Double]], k2: Array[Array[Double]]): Array[Array[Double]] = {
+    var s = Array(Array( 0.0, 0.0, 0.0), Array( 0.0, 1.0, 0.0), Array( 0.0, 0.0, 0.0))
+    
+    for (y <- 0 until 3) {
+      for (x <- 0 until 3) {
+        s(x)(y) = k1(x)(y) + k2(x)(y)
+      }
+    }
+    
+    s
+  }
+  
 }
 
 class SobelOp(image: BufferedImage) extends Worker {
@@ -87,23 +100,23 @@ class ThresholdOp(image: BufferedImage, val threshold: Int) extends Worker {
 class SharpenOp(image: BufferedImage, val c: Double) extends Worker {
   val width = image.getWidth
 
-//val F1 = Array(Array( 0.0, 1.0, 0.0), Array( 1.0,-4.0, 1.0), Array( 0.0, 1.0, 0.0))
-//val F2 = Array(Array( 1.0, 1.0, 1.0), Array( 1.0,-8.0, 1.0), Array( 1.0, 1.0, 1.0))
+  val noOp = Array(Array( 0.0, 0.0, 0.0), Array( 0.0, 1.0, 0.0), Array( 0.0, 0.0, 0.0))
+
+  val F1   = Array(Array( 0.0, 1.0, 0.0), Array( 1.0,-4.0, 1.0), Array( 0.0, 1.0, 0.0))
+  val F2   = Array(Array( 1.0, 1.0, 1.0), Array( 1.0,-8.0, 1.0), Array( 1.0, 1.0, 1.0))
+
+  val Fc  = F1.map(_.map(_ * c))
   
-  val F1 = Array(Array( 0.0, 1.0, 0.0), Array( 1.0,-5.0, 1.0), Array( 0.0, 1.0, 0.0))
-  val F2 = Array(Array( 1.0, 1.0, 1.0), Array( 1.0,-9.0, 1.0), Array( 1.0, 1.0, 1.0))
-  
-  val F1c = F1.map(_.map(_ * c))
-  val F2c = F2.map(_.map(_ * c))
-  
+  val Fs = sumKernel(Fc, noOp)
+
   override def calcResult(lineNo: Int): Array[(Float, Float, Float)] = {
     var lineResult = new Array[(Float, Float, Float)](width)
 
     for (x <- 0 until width) {
-      val pixel = mapImagePoint(image, x, lineNo, F1c)
-      val r = Math.min(1.0, Math.abs(pixel._1)).toFloat
-      val g = Math.min(1.0, Math.abs(pixel._2)).toFloat
-      val b = Math.min(1.0, Math.abs(pixel._3)).toFloat
+      val pixel = mapImagePoint(image, x, lineNo, Fs)
+      val r = Math.min(1.0, Math.max(0.0, pixel._1)).toFloat
+      val g = Math.min(1.0, Math.max(0.0, pixel._2)).toFloat
+      val b = Math.min(1.0, Math.max(0.0, pixel._3)).toFloat
       lineResult(x) = (r, g, b)
     }
     
@@ -118,10 +131,11 @@ class NoOp(image: BufferedImage) extends Worker {
     var lineResult = new Array[(Float, Float, Float)](width)
     
     for (x <- 0 until width) {
+      val rgb   = image.getRGB(x, lineNo)
       val color = new Color(image.getRGB(x, lineNo))
-      lineResult(x) = ((color.getRed()   / 255.0).toFloat,
-                       (color.getGreen() / 255.0).toFloat,
-                       (color.getBlue()  / 255.0).toFloat)
+      lineResult(x) = ((color.getRed.toFloat   / 255.0f),
+                       (color.getGreen.toFloat / 255.0f),
+                       (color.getBlue.toFloat  / 255.0f))
     }
     
     lineResult
