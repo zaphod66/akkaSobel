@@ -12,7 +12,7 @@ trait Worker extends Actor {
       sender ! Result(lineNo, lineResult)
     }
   }
-    
+
   def mapImagePoint(image: BufferedImage, x: Int, y: Int, matrix: Array[Array[Double]]): (Double, Double, Double) = {
     var result = (0.0, 0.0, 0.0)
     for {
