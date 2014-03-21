@@ -13,7 +13,7 @@ import java.awt.Color
 sealed trait OpMessage
 case object Start extends OpMessage
 case class Work(lineNo: Int) extends OpMessage
-case class Result(lineNo: Int, lineResult: Array[(Float,Float,Float)]) extends OpMessage
+case class Result(lineNo: Int, lineResult: Array[Int]) extends OpMessage
 case class Write(image: BufferedImage, fileName: String, id: Int) extends OpMessage
 case class WriteFinished(id: Int) extends OpMessage
 
@@ -75,14 +75,14 @@ object Sobel extends App {
     val sobelRouter    = context.actorOf(Props(new SobelOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
     val thresRouter    = context.actorOf(Props(new ThresholdOp(tmpImage, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
 
-    val sharpenRouter1 = context.actorOf(Props(new SharpenOp(srcImage, 0.1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter1")
+    val sharpenRouter1 = context.actorOf(Props(new SharpenOp(srcImage, 1.5)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter1")
     val sharpenRouter2 = context.actorOf(Props(new SharpenOp(tmpImage, 0.0)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter2")
     
     val noOp1          = context.actorOf(Props(new NoOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOp1Router")
     val noOp2          = context.actorOf(Props(new NoOp(tmpImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOp2Router")
     
     val firstRouter    = sharpenRouter1
-    val secondRouter   = noOp2
+    val secondRouter   = thresRouter
     
     override def receive = {
       case Start => {
@@ -94,12 +94,11 @@ object Sobel extends App {
       case Result(lineNo, lineResult) => {
         noOfLines += 1
         for (x <- 0 until width) yield {
-          val c = lineResult(x)
-          val color = new Color(c._1, c._2, c._3)
+          val rgb = lineResult(x)
           if (firstStepDone) {
-            resImage.setRGB(x, lineNo, color.getRGB())
+            resImage.setRGB(x, lineNo, rgb)
           } else {
-            tmpImage.setRGB(x, lineNo, color.getRGB())
+            tmpImage.setRGB(x, lineNo, rgb)
           }
         }
         

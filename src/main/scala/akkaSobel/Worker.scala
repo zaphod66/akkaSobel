@@ -15,6 +15,7 @@ trait Worker extends Actor {
 
   def mapImagePoint(image: BufferedImage, x: Int, y: Int, matrix: Array[Array[Double]]): (Double, Double, Double) = {
     var result = (0.0, 0.0, 0.0)
+    
     for {
       dY <- -1 to 1
       dX <- -1 to 1
@@ -37,7 +38,7 @@ trait Worker extends Actor {
     result
   }
     
-  def calcResult(lineNo: Int): Array[(Float,Float,Float)]
+  def calcResult(lineNo: Int): Array[Int]
   
   def sumKernel(k1: Array[Array[Double]], k2: Array[Array[Double]]): Array[Array[Double]] = {
     var s = Array(Array( 0.0, 0.0, 0.0), Array( 0.0, 1.0, 0.0), Array( 0.0, 0.0, 0.0))
@@ -59,8 +60,8 @@ class SobelOp(image: BufferedImage) extends Worker {
   val Gy = Array(Array(-1.0, -2.0, -1.0), Array( 0.0, 0.0, 0.0), Array( 1.0, 2.0, 1.0))
   val Gx = Array(Array(-1.0,  0.0,  1.0), Array(-2.0, 0.0, 2.0), Array(-1.0, 0.0, 1.0))
   
-  override def calcResult(lineNo: Int): Array[(Float, Float, Float)] = {
-      var lineResult = new Array[(Float, Float, Float)](width)
+  override def calcResult(lineNo: Int): Array[Int] = {
+      var lineResult = new Array[Int](width)
       
       for (x <- 0 until width) {
         val xValue = mapImagePoint(image, x, lineNo, Gx)
@@ -70,7 +71,7 @@ class SobelOp(image: BufferedImage) extends Worker {
         val tmp = Math.sqrt(Math.pow(xGray, 2) + Math.pow(yGray, 2))
         val value = Math.min(1.0, tmp).toFloat
         
-        lineResult(x) = (value, value, value)
+        lineResult(x) = new Color(value, value, value).getRGB()
       }
       
       lineResult
@@ -80,16 +81,16 @@ class SobelOp(image: BufferedImage) extends Worker {
 class ThresholdOp(image: BufferedImage, val threshold: Int) extends Worker {
   val width = image.getWidth
 
-  override def calcResult(lineNo: Int): Array[(Float, Float, Float)] = {
-    var lineResult = new Array[(Float, Float, Float)](width)
+  override def calcResult(lineNo: Int): Array[Int] = {
+    var lineResult = new Array[Int](width)
 
     for (x <- 0 until width) {
       val color = new Color(image.getRGB(x, lineNo))
 
       if (color.getRed() > threshold) {
-        lineResult(x) = (1.0f, 1.0f, 1.0f)
+        lineResult(x) = Color.WHITE.getRGB
       } else {
-        lineResult(x) = (0.0f, 0.0f, 0.0f)
+        lineResult(x) = Color.BLACK.getRGB
       }
     }
 
@@ -109,15 +110,15 @@ class SharpenOp(image: BufferedImage, val c: Double) extends Worker {
   
   val Fs = sumKernel(Fc, noOp)
 
-  override def calcResult(lineNo: Int): Array[(Float, Float, Float)] = {
-    var lineResult = new Array[(Float, Float, Float)](width)
+  override def calcResult(lineNo: Int): Array[Int] = {
+    var lineResult = new Array[Int](width)
 
     for (x <- 0 until width) {
       val pixel = mapImagePoint(image, x, lineNo, Fs)
       val r = Math.min(1.0, Math.max(0.0, pixel._1)).toFloat
       val g = Math.min(1.0, Math.max(0.0, pixel._2)).toFloat
       val b = Math.min(1.0, Math.max(0.0, pixel._3)).toFloat
-      lineResult(x) = (r, g, b)
+      lineResult(x) = new Color(r, g, b).getRGB
     }
     
     lineResult
@@ -127,15 +128,11 @@ class SharpenOp(image: BufferedImage, val c: Double) extends Worker {
 class NoOp(image: BufferedImage) extends Worker {
   val width = image.getWidth
   
-  override def calcResult(lineNo: Int): Array[(Float, Float, Float)] = {
-    var lineResult = new Array[(Float, Float, Float)](width)
+  override def calcResult(lineNo: Int): Array[Int] = {
+    var lineResult = new Array[Int](width)
     
     for (x <- 0 until width) {
-      val rgb   = image.getRGB(x, lineNo)
-      val color = new Color(image.getRGB(x, lineNo))
-      lineResult(x) = ((color.getRed.toFloat   / 255.0f),
-                       (color.getGreen.toFloat / 255.0f),
-                       (color.getBlue.toFloat  / 255.0f))
+      lineResult(x) = image.getRGB(x, lineNo)
     }
     
     lineResult
