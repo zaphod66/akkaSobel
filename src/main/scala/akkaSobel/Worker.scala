@@ -125,6 +125,28 @@ class SharpenOp(image: BufferedImage, val c: Double) extends Worker {
   }
 }
 
+class BlurOp(image: BufferedImage) extends Worker {
+  val width = image.getWidth
+
+  val F1 = Array(Array( 1.0, 1.0, 1.0), Array( 1.0, 1.0, 1.0), Array( 1.0, 1.0, 1.0))
+
+  val Fc = F1.map(_.map(_ * 0.111))
+
+  override def calcResult(lineNo: Int): Array[Int] = {
+    var lineResult = new Array[Int](width)
+
+    for (x <- 0 until width) {
+      val pixel = mapImagePoint(image, x, lineNo, Fc)
+      val r = Math.min(1.0, Math.max(0.0, pixel._1)).toFloat
+      val g = Math.min(1.0, Math.max(0.0, pixel._2)).toFloat
+      val b = Math.min(1.0, Math.max(0.0, pixel._3)).toFloat
+      lineResult(x) = new Color(r, g, b).getRGB
+    }
+    
+    lineResult
+  }
+}
+
 class NoOp(image: BufferedImage) extends Worker {
   val width = image.getWidth
   

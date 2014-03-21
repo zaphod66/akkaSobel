@@ -12,6 +12,7 @@ import java.awt.Color
 
 sealed trait OpMessage
 case object Start extends OpMessage
+case class Ops(ops: List[akka.actor.ActorRef])
 case class Work(lineNo: Int) extends OpMessage
 case class Result(lineNo: Int, lineResult: Array[Int]) extends OpMessage
 case class Write(image: BufferedImage, fileName: String, id: Int) extends OpMessage
@@ -60,7 +61,6 @@ object Sobel extends App {
     val fileName    = config.filename
     
     var noOfLines: Int = _
-    var firstStepDone: Boolean = _
     val start: Long = System.currentTimeMillis
     val height = srcImage.getHeight
     val width  = srcImage.getWidth
@@ -70,48 +70,48 @@ object Sobel extends App {
     val writer = context.actorOf(Props(new ImageWriter(start)), name = "imageWriter")
 
     val tmpImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_INT_ARGB)
-    val resImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_INT_ARGB)
 
     val sobelRouter    = context.actorOf(Props(new SobelOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
-    val thresRouter    = context.actorOf(Props(new ThresholdOp(tmpImage, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
-
-    val sharpenRouter1 = context.actorOf(Props(new SharpenOp(srcImage, 1.5)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter1")
-    val sharpenRouter2 = context.actorOf(Props(new SharpenOp(tmpImage, 0.0)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter2")
+    val thresRouter    = context.actorOf(Props(new ThresholdOp(srcImage, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
+    val sharpenRouter  = context.actorOf(Props(new SharpenOp(srcImage, 0.5)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter")
+    val blurRouter     = context.actorOf(Props(new BlurOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "blurRouter")
+    val noOpRouter     = context.actorOf(Props(new NoOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOpRouter")
     
-    val noOp1          = context.actorOf(Props(new NoOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOp1Router")
-    val noOp2          = context.actorOf(Props(new NoOp(tmpImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOp2Router")
-    
-    val firstRouter    = sharpenRouter1
-    val secondRouter   = thresRouter
+    var ops = List(blurRouter, blurRouter, blurRouter, blurRouter, blurRouter)
     
     override def receive = {
       case Start => {
         println("Master Start  after " + (System.currentTimeMillis - start).millis)
-        firstStepDone = false
-        for (i <- 0 until height) firstRouter ! Work(i)
+        val router = ops.head
+        ops = ops.tail
+        for (i <- 0 until height) router ! Work(i)
       }
       
       case Result(lineNo, lineResult) => {
         noOfLines += 1
+        
         for (x <- 0 until width) yield {
           val rgb = lineResult(x)
-          if (firstStepDone) {
-            resImage.setRGB(x, lineNo, rgb)
-          } else {
-            tmpImage.setRGB(x, lineNo, rgb)
-          }
+          tmpImage.setRGB(x, lineNo, rgb)
         }
         
         if (noOfLines == height) {
-          if (firstStepDone) {
-            println("Second step done after " + (System.currentTimeMillis - start).millis)
-            writer ! Write(resImage, "end_" + fileName, FINISH_ID)
+          if (ops.isEmpty) {
+            println("All steps done after " + (System.currentTimeMillis - start).millis)
+            writer ! Write(tmpImage, "end_" + fileName, FINISH_ID)
           } else {
-            firstStepDone = true
             noOfLines = 0
-            println("First step done after " + (System.currentTimeMillis - start).millis)
-          //writer ! Write(tmpImage, "tmp_" + fileName, 1)
-            for (i <- 0 until height) secondRouter ! Work(i)
+            println("Step done after " + (System.currentTimeMillis - start).millis)
+
+            //writer ! Write(tmpImage, "tmp_" + fileName, 1)
+//            srcImage = tmpImage
+            val graphics = srcImage.getGraphics
+            graphics.drawImage(tmpImage, 0, 0, null)
+            graphics.dispose
+
+            val router = ops.head
+            ops = ops.tail
+            for (i <- 0 until height) router ! Work(i)
           }
         }
       }
