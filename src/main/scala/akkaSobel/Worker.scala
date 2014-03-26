@@ -13,17 +13,25 @@ trait Worker extends Actor {
     }
   }
 
-  def mapImagePoint(image: BufferedImage, x: Int, y: Int, matrix: Array[Array[Double]]): (Double, Double, Double) = {
+  def mapImagePoint(image: BufferedImage, x: Int, y: Int, kernel: Array[Array[Double]]): (Double, Double, Double) = {
     var result = (0.0, 0.0, 0.0)
     
+    val sy = kernel.length
+    val sx = kernel(0).length
+    
+    val by = ( sy - 1 ) / 2
+    val bx = ( sx - 1 ) / 2
+    
+//  println("mapImagePoint: (" + sx + ", " + sy + ") -> (" + bx + ", " + by + ")" )
+    
     for {
-      dY <- -1 to 1
-      dX <- -1 to 1
+      dY <- -by to by
+      dX <- -bx to bx
       cY = y + dY
       cX = x + dX
     } {
       if (cY >= 0 && cY < image.getHeight && cX >= 0 && cX < image.getWidth) {
-        val coefficient = matrix(dY + 1)(dX + 1)
+        val coefficient = kernel(dY + by)(dX + bx)
         val color = new Color(image.getRGB(cX, cY))
         var r = result._1
         var g = result._2
@@ -61,7 +69,7 @@ class SobelOp(image: BufferedImage) extends Worker {
   val Gx = Array(Array(-1.0,  0.0,  1.0), Array(-2.0, 0.0, 2.0), Array(-1.0, 0.0, 1.0))
   
   override def calcResult(lineNo: Int): Array[Int] = {
-      var lineResult = new Array[Int](width)
+      val lineResult = new Array[Int](width)
       
       for (x <- 0 until width) {
         val xValue = mapImagePoint(image, x, lineNo, Gx)
@@ -78,20 +86,60 @@ class SobelOp(image: BufferedImage) extends Worker {
   }
 }
 
+class GrayOp(image: BufferedImage) extends Worker {
+  val width = image.getWidth
+
+  override def calcResult(lineNo: Int): Array[Int] = {
+    val lineResult = new Array[Int](width)
+
+    for (x <- 0 until width) {
+      val color = new Color(image.getRGB(x, lineNo))
+      val value = ((color.getRed * 0.2126 + color.getGreen * 0.7152 + color.getBlue * 0.0722) / 255).toFloat
+      
+      lineResult(x) = new Color(value, value, value).getRGB
+    }
+    
+    lineResult
+  }
+}
+
 class ThresholdOp(image: BufferedImage, val threshold: Int) extends Worker {
   val width = image.getWidth
 
   override def calcResult(lineNo: Int): Array[Int] = {
-    var lineResult = new Array[Int](width)
+    val lineResult = new Array[Int](width)
 
     for (x <- 0 until width) {
+//    val rgb   = image.getRGB(x, lineNo)
       val color = new Color(image.getRGB(x, lineNo))
 
+//    println(s"thres => rgb($x, $lineNo) = $rgb, Color(rgb) = $color")
+      
       if (color.getRed() > threshold) {
         lineResult(x) = Color.WHITE.getRGB
       } else {
         lineResult(x) = Color.BLACK.getRGB
       }
+    }
+
+    lineResult
+  }
+}
+
+class InvertOp(image: BufferedImage) extends Worker {
+  val width = image.getWidth
+
+  override def calcResult(lineNo: Int): Array[Int] = {
+    val lineResult = new Array[Int](width)
+
+    for (x <- 0 until width) {
+      val color = new Color(image.getRGB(x, lineNo))
+      
+      val r = 255 - color.getRed()
+      val g = 255 - color.getGreen()
+      val b = 255 - color.getBlue()
+      
+      lineResult(x) = new Color(r, g, b).getRGB()
     }
 
     lineResult
@@ -111,7 +159,7 @@ class SharpenOp(image: BufferedImage, val c: Double) extends Worker {
   val Fs = sumKernel(Fc, noOp)
 
   override def calcResult(lineNo: Int): Array[Int] = {
-    var lineResult = new Array[Int](width)
+    val lineResult = new Array[Int](width)
 
     for (x <- 0 until width) {
       val pixel = mapImagePoint(image, x, lineNo, Fs)
@@ -128,15 +176,95 @@ class SharpenOp(image: BufferedImage, val c: Double) extends Worker {
 class BlurOp(image: BufferedImage) extends Worker {
   val width = image.getWidth
 
-  val F1 = Array(Array( 1.0, 1.0, 1.0), Array( 1.0, 1.0, 1.0), Array( 1.0, 1.0, 1.0))
-
-  val Fc = F1.map(_.map(_ * 0.111))
+  val F1 = Array(Array( 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0))
+  val F2 = Array(Array( 1.0, 1.0, 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0, 1.0, 1.0))
+  val F3 = Array(Array( 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+                 Array( 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0))
+  val F4 = Array(Array(0.00000067, 0.00002292, 0.00019117, 0.00038771, 0.00019117, 0.00002292, 0.00000067),
+                 Array(0.00002292, 0.00078634, 0.00655965, 0.01330373, 0.00655965, 0.00078633, 0.00002292),
+                 Array(0.00019117, 0.00655965, 0.05472157, 0.11098164, 0.05472157, 0.00655965, 0.00019117),
+                 Array(0.00038771, 0.01330373, 0.11098164, 0.22508352, 0.11098164, 0.01330373, 0.00038771),
+                 Array(0.00019117, 0.00655965, 0.05472157, 0.11098164, 0.05472157, 0.00655965, 0.00019117),
+                 Array(0.00002292, 0.00078634, 0.00655965, 0.01330373, 0.00655965, 0.00078633, 0.00002292),
+                 Array(0.00000067, 0.00002292, 0.00019117, 0.00038771, 0.00019117, 0.00002292, 0.00000067))
+  
+//val Fc = F1.map(_.map(_ * (1.0 /  9.0)))
+//val Fc = F2.map(_.map(_ * (1.0 / 25.0)))
+//val Fc = F3.map(_.map(_ * (1.0 / 49.0)))
+  val Fc = F4
 
   override def calcResult(lineNo: Int): Array[Int] = {
-    var lineResult = new Array[Int](width)
+    val lineResult = new Array[Int](width)
 
     for (x <- 0 until width) {
       val pixel = mapImagePoint(image, x, lineNo, Fc)
+      val r = Math.min(1.0, Math.max(0.0, pixel._1)).toFloat
+      val g = Math.min(1.0, Math.max(0.0, pixel._2)).toFloat
+      val b = Math.min(1.0, Math.max(0.0, pixel._3)).toFloat
+      lineResult(x) = new Color(r, g, b).getRGB
+    }
+    
+    lineResult
+  }
+}
+
+
+class DilateOp(image: BufferedImage, radius: Int, thres: Int) extends Worker {
+  val width = image.getWidth
+  
+  override def calcResult(lineNo: Int): Array[Int] = {
+    val lineResult = new Array[Int](width)
+
+    for (x <- 0 until width) {
+      var maxRGB = 0
+      
+      for {
+        dY <- -radius to radius
+        dX <- -radius to radius
+        cY = lineNo + dY
+        cX = x + dX
+      } {
+        if (cY >= 0 && cY < image.getHeight && cX >= 0 && cX < width) {
+          val rgb = image.getRGB(cX, cY)
+          if (Math.abs(rgb) > Math.abs(maxRGB)) {
+            maxRGB = rgb
+          }
+        
+      //  println(s"lineNo = $lineNo ===> x = $x, dX = $dX, dY = $dY, cX = $cX, cY = $cY => rgb = $rgb, maxRGB = $maxRGB")
+        
+        }
+      }
+
+      if (new Color(maxRGB).getRed > thres) {
+        lineResult(x) = Color.WHITE.getRGB
+      } else {
+        lineResult(x) = Color.BLACK.getRGB
+      }
+    }
+    
+    lineResult
+  }
+}
+
+class ConvolveOp(image: BufferedImage, kernel: Array[Array[Double]]) extends Worker {
+  val width = image.getWidth
+  
+  override def calcResult(lineNo: Int): Array[Int] = {
+    val lineResult = new Array[Int](width)
+    
+    for (x <- 0 until width) {
+      val pixel = mapImagePoint(image, x, lineNo, kernel)
       val r = Math.min(1.0, Math.max(0.0, pixel._1)).toFloat
       val g = Math.min(1.0, Math.max(0.0, pixel._2)).toFloat
       val b = Math.min(1.0, Math.max(0.0, pixel._3)).toFloat
@@ -151,7 +279,7 @@ class NoOp(image: BufferedImage) extends Worker {
   val width = image.getWidth
   
   override def calcResult(lineNo: Int): Array[Int] = {
-    var lineResult = new Array[Int](width)
+    val lineResult = new Array[Int](width)
     
     for (x <- 0 until width) {
       lineResult(x) = image.getRGB(x, lineNo)
