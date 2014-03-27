@@ -74,12 +74,14 @@ class SobelOp(image: BufferedImage) extends Worker {
       for (x <- 0 until width) {
         val xValue = mapImagePoint(image, x, lineNo, Gx)
         val yValue = mapImagePoint(image, x, lineNo, Gy)
-        val xGray = xValue._1 * 0.2126 + xValue._2 * 0.7152 + xValue._3 * 0.0722
-        val yGray = yValue._1 * 0.2126 + yValue._2 * 0.7152 + yValue._3 * 0.0722
-        val tmp = Math.sqrt(Math.pow(xGray, 2) + Math.pow(yGray, 2))
-        val value = Math.min(1.0, tmp).toFloat
+        val rTmp = Math.sqrt(Math.pow(xValue._1, 2) + Math.pow(yValue._1, 2))
+        val gTmp = Math.sqrt(Math.pow(xValue._2, 2) + Math.pow(yValue._2, 2))
+        val bTmp = Math.sqrt(Math.pow(xValue._3, 2) + Math.pow(yValue._3, 2))
+        val rVal = Math.min(1.0, rTmp).toFloat
+        val gVal = Math.min(1.0, gTmp).toFloat
+        val bVal = Math.min(1.0, bTmp).toFloat
         
-        lineResult(x) = new Color(value, value, value).getRGB()
+        lineResult(x) = new Color(rVal, gVal, bVal).getRGB()
       }
       
       lineResult
@@ -219,6 +221,15 @@ class BlurOp(image: BufferedImage) extends Worker {
   }
 }
 
+class MedianOp(image: BufferedImage, radius: Int) extends Worker {
+  val width = image.getWidth
+  
+  override def calcResult(lineNo: Int): Array[Int] = {
+    val lineResult = new Array[Int](width)
+    
+    lineResult
+  }
+}
 
 class DilateOp(image: BufferedImage, radius: Int, thres: Int) extends Worker {
   val width = image.getWidth

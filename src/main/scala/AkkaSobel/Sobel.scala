@@ -98,14 +98,16 @@ object Sobel extends App {
     val grayRouter     = context.actorOf(Props(new GrayOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "grayRouter")
     val thresRouter    = context.actorOf(Props(new ThresholdOp(srcImage, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
     val invertRouter   = context.actorOf(Props(new InvertOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "invertRouter")
-    val dilateRouter   = context.actorOf(Props(new DilateOp(srcImage, 1, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilateRouter")
+    val dilate1Router  = context.actorOf(Props(new DilateOp(srcImage, 1, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate1Router")
+    val dilate2Router  = context.actorOf(Props(new DilateOp(srcImage, 2, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate2Router")
+    val dilate3Router  = context.actorOf(Props(new DilateOp(srcImage, 3, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate3Router")
     val sharpenRouter  = context.actorOf(Props(new SharpenOp(srcImage, 0.1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter")
     val blurRouter     = context.actorOf(Props(new BlurOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "blurRouter")
     val embossRouter   = context.actorOf(Props(new ConvolveOp(srcImage, embossKernel2)).withRouter(RoundRobinRouter(noOfWorkers)), name = "embossRouter")
     val sharpOpRouter  = context.actorOf(Props(new ConvolveOp(srcImage, sharpenKernel)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpOpRouter")
     val noOpRouter     = context.actorOf(Props(new NoOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOpRouter")
     
-    var ops = List(blurRouter, sobelRouter, thresRouter, dilateRouter, dilateRouter, invertRouter, dilateRouter, dilateRouter, dilateRouter)
+    var ops = List(blurRouter, sobelRouter, grayRouter, thresRouter, dilate1Router, invertRouter, dilate3Router, dilate1Router)
     
     override def receive = {
       case Start => {
@@ -159,7 +161,7 @@ object Sobel extends App {
     override def receive = {
       case Write(image, fileName, id) => {
         println("Write " + id + " (" + fileName + ") started  after " + (System.currentTimeMillis - startTime).millis)
-        ImageIO.write(image, "png", new File(fileName))
+        ImageIO.write(image, "PNG", new File(fileName))
         println("Write " + id + " finished after " + (System.currentTimeMillis - startTime).millis)
         sender ! WriteFinished(id)
       }
