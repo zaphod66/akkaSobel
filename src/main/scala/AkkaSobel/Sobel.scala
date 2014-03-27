@@ -105,9 +105,7 @@ object Sobel extends App {
     val sharpOpRouter  = context.actorOf(Props(new ConvolveOp(srcImage, sharpenKernel)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpOpRouter")
     val noOpRouter     = context.actorOf(Props(new NoOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOpRouter")
     
-//  var ops = List(blurRouter, sobelRouter, thresRouter, invertRouter)
-    var ops = List(blurRouter, sobelRouter, thresRouter, dilateRouter, invertRouter)
-//  var ops = List(blurRouter, sobelRouter, thresRouter, invertRouter, dilateRouter)
+    var ops = List(blurRouter, sobelRouter, thresRouter, dilateRouter, dilateRouter, invertRouter, dilateRouter, dilateRouter, dilateRouter)
     
     override def receive = {
       case Start => {
