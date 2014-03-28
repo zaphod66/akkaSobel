@@ -6,9 +6,15 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 
 import java.io.File
+
+import java.util.Calendar
+import java.text.SimpleDateFormat
+
 import javax.imageio.ImageIO
 import java.awt.image.BufferedImage
-import java.awt.Color
+import java.awt.{Graphics, BorderLayout, Color, Dimension}
+import java.awt.event.{ActionListener, ActionEvent}
+import javax.swing.{JComponent, JFrame, JLabel, Timer}
 
 sealed trait OpMessage
 case object Start extends OpMessage
@@ -38,11 +44,75 @@ object Sobel extends App {
     
     println("SobelApp " + filename + " -> " + "end_" + filename + " (workers = " + noOfWorkers + " threshold = " + threshold + ")")
 
-    val image = ImageIO.read(new File(filename))
-    println("Image: " + image.getWidth() + " * " + image.getHeight())
+    val srcImage = ImageIO.read(new File(filename))
+    println("Image: " + srcImage.getWidth() + " * " + srcImage.getHeight())
 
-    val config = Configuration(image, noOfWorkers, threshold, filename)
+    val resImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_INT_ARGB)
+
+    var f = 1
+    val wi = srcImage.getWidth
+    val hi = srcImage.getHeight
+    var w = wi
+    var h = hi
+    while (w > 768 || h > 768) {
+      f += 1
+      w = wi / f
+      h = hi / f
+    }
     
+    println(s"f = $f => ($w, $h)")
+    
+    val frame = new JFrame("Image Processing with Akka") { frame =>
+      setVisible(true)
+      setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
+      setPreferredSize(new Dimension(2 * w, h))
+      
+      object srcComp extends JComponent {
+        setPreferredSize(new Dimension(w, h))
+        
+        override def paintComponent(g: Graphics) {
+          g.drawImage(srcImage, 0, 0, w, h, 0, 0, wi, hi, null)
+        }
+      }
+      
+      object finComp extends JComponent {
+        setPreferredSize(new Dimension(w, h))
+        
+        override def paintComponent(g: Graphics) {
+          g.drawImage(resImage, 0, 0, w, h, 0, 0, wi, hi, null)
+        }
+      }
+      
+      object label extends JLabel with ActionListener {
+        val time = new Timer(1000, this)
+        val df   = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss")
+        
+        setBackground(Color.BLACK)
+        setForeground(Color.WHITE)
+        setOpaque(true)
+
+        setText("Starting " + filename)
+
+        def actionPerformed(event: ActionEvent) {          
+          setText("Processing " + filename + " : " + (df format Calendar.getInstance().getTime))
+          label.repaint()
+        }
+        
+        def start = time.start
+      }
+      
+      setContentPane(new JComponent {
+        setLayout(new BorderLayout)
+        add(label, BorderLayout.NORTH)
+        add(srcComp, BorderLayout.WEST)
+        add(finComp, BorderLayout.EAST)
+      })
+      pack
+      setResizable(false)
+      label.start
+    }
+    
+    val config = Configuration(srcImage, noOfWorkers, threshold, filename, resImage, frame)
     calc(config)
   }
   
@@ -90,34 +160,47 @@ object Sobel extends App {
                               Array(-1.0,  9.0, -1.0),
                               Array(-1.0, -1.0, -1.0))
     
-    val tmpImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_INT_ARGB)
+    val tmp1Image = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_INT_ARGB)
+    val tmp2Image = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_INT_ARGB)
 
     val writer = context.actorOf(Props(new ImageWriter(start)), name = "imageWriter")
 
-    val sobelRouter    = context.actorOf(Props(new SobelOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
-    val grayRouter     = context.actorOf(Props(new GrayOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "grayRouter")
-    val thresRouter    = context.actorOf(Props(new ThresholdOp(srcImage, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
-    val invertRouter   = context.actorOf(Props(new InvertOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "invertRouter")
-    val dilate1Router  = context.actorOf(Props(new DilateOp(srcImage, 1, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate1Router")
-    val dilate2Router  = context.actorOf(Props(new DilateOp(srcImage, 2, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate2Router")
-    val dilate3Router  = context.actorOf(Props(new DilateOp(srcImage, 3, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate3Router")
-    val sharpenRouter  = context.actorOf(Props(new SharpenOp(srcImage, 0.1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter")
-    val blurRouter     = context.actorOf(Props(new BlurOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "blurRouter")
-    val embossRouter   = context.actorOf(Props(new ConvolveOp(srcImage, embossKernel2)).withRouter(RoundRobinRouter(noOfWorkers)), name = "embossRouter")
-    val sharpOpRouter  = context.actorOf(Props(new ConvolveOp(srcImage, sharpenKernel)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpOpRouter")
-    val noOpRouter     = context.actorOf(Props(new NoOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOpRouter")
+    val sobelRouter    = context.actorOf(Props(new SobelOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
+    val grayRouter     = context.actorOf(Props(new GrayOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "grayRouter")
+    val thresRouter    = context.actorOf(Props(new ThresholdOp(tmp1Image, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
+    val invertRouter   = context.actorOf(Props(new InvertOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "invertRouter")
+    val dilate1Router  = context.actorOf(Props(new DilateOp(tmp1Image, 1, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate1Router")
+    val dilate2Router  = context.actorOf(Props(new DilateOp(tmp1Image, 2, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate2Router")
+    val dilate3Router  = context.actorOf(Props(new DilateOp(tmp1Image, 3, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate3Router")
+    val sharpenRouter  = context.actorOf(Props(new SharpenOp(tmp1Image, 0.1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter")
+    val blurRouter     = context.actorOf(Props(new BlurOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "blurRouter")
+    val embossRouter   = context.actorOf(Props(new ConvolveOp(tmp1Image, embossKernel2)).withRouter(RoundRobinRouter(noOfWorkers)), name = "embossRouter")
+    val sharpOpRouter  = context.actorOf(Props(new ConvolveOp(tmp1Image, sharpenKernel)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpOpRouter")
+    val noOpRouter     = context.actorOf(Props(new NoOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOpRouter")
     
-    var ops = List(blurRouter, sobelRouter, grayRouter, thresRouter, dilate1Router, invertRouter, dilate3Router, dilate1Router)
+    var ops = List(blurRouter, sobelRouter, grayRouter, thresRouter, dilate1Router, invertRouter, dilate2Router)
+//  var ops = List(sobelRouter, noOpRouter)
     
     override def receive = {
       case Start => {
         println("Master Start  after " + (System.currentTimeMillis - start).millis)
+        
+        val graphics = tmp1Image.getGraphics
+        graphics.drawImage(srcImage, 0, 0, null)
+        graphics.dispose        
+        
         val router = ops.head
         ops = ops.tail
         for (i <- 0 until height) router ! Work(i)
       }
       
       case Stop => {
+          val g = config.resImage.getGraphics
+          g.drawImage(tmp2Image, 0, 0, null)
+          g.dispose
+
+          config.frame.update(config.frame.getGraphics)
+          
           println("Master Finish after " + (System.currentTimeMillis - start).millis)
           context.system.shutdown
       }
@@ -127,21 +210,27 @@ object Sobel extends App {
         
         for (x <- 0 until width) yield {
           val rgb = lineResult(x)
-          tmpImage.setRGB(x, lineNo, rgb)
+          tmp2Image.setRGB(x, lineNo, rgb)
         }
         
         if (noOfLines == height) {
           if (ops.isEmpty) {
             println("All steps done after " + (System.currentTimeMillis - start).millis)
-            writer ! Write(tmpImage, "end_" + fileName, FINISH_ID)
+            writer ! Write(tmp2Image, "end_" + fileName, FINISH_ID)
           } else {
             noOfLines = 0
             println("Step done after " + (System.currentTimeMillis - start).millis)
 
-            val graphics = srcImage.getGraphics
-            graphics.drawImage(tmpImage, 0, 0, null)
+            val graphics = tmp1Image.getGraphics
+            graphics.drawImage(tmp2Image, 0, 0, null)
             graphics.dispose
 
+            val g = config.resImage.getGraphics
+            g.drawImage(tmp2Image, 0, 0, null)
+            g.dispose
+
+            config.frame.update(config.frame.getGraphics)
+            
             val router = ops.head
             ops = ops.tail
             for (i <- 0 until height) router ! Work(i)
