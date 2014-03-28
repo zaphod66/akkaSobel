@@ -42,10 +42,9 @@ object Sobel extends App {
     }
     val threshold = tmpThreshold
     
-    println("SobelApp " + filename + " -> " + "end_" + filename + " (workers = " + noOfWorkers + " threshold = " + threshold + ")")
+    println("Akka App " + filename + " -> " + "end_" + filename + " (workers = " + noOfWorkers + " threshold = " + threshold + ")")
 
     val srcImage = ImageIO.read(new File(filename))
-    println("Image: " + srcImage.getWidth() + " * " + srcImage.getHeight())
 
     val resImage = new BufferedImage(srcImage.getWidth, srcImage.getHeight, BufferedImage.TYPE_INT_ARGB)
 
@@ -54,18 +53,18 @@ object Sobel extends App {
     val hi = srcImage.getHeight
     var w = wi
     var h = hi
-    while (w > 768 || h > 768) {
+    while (w > 960 || h > 1024) {
       f += 1
       w = wi / f
       h = hi / f
     }
     
-    println(s"f = $f => ($w, $h)")
+    println(s"Size: ($wi, $hi) f = $f => ($w, $h)")
     
     val frame = new JFrame("Image Processing with Akka") { frame =>
       setVisible(true)
       setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
-      setPreferredSize(new Dimension(2 * w, h))
+      setPreferredSize(new Dimension(2 * w, h + 38))
       
       object srcComp extends JComponent {
         setPreferredSize(new Dimension(w, h))
@@ -75,7 +74,7 @@ object Sobel extends App {
         }
       }
       
-      object finComp extends JComponent {
+      object resComp extends JComponent {
         setPreferredSize(new Dimension(w, h))
         
         override def paintComponent(g: Graphics) {
@@ -86,6 +85,7 @@ object Sobel extends App {
       object label extends JLabel with ActionListener {
         val time = new Timer(1000, this)
         val df   = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss")
+        val srt  = Calendar.getInstance().getTime
         
         setBackground(Color.BLACK)
         setForeground(Color.WHITE)
@@ -94,19 +94,22 @@ object Sobel extends App {
         setText("Starting " + filename)
 
         def actionPerformed(event: ActionEvent) {          
-          setText("Processing " + filename + " : " + (df format Calendar.getInstance().getTime))
+          setText(s"Processing $filename ($wi, $hi) - (workers = $noOfWorkers) - " + (df format Calendar.getInstance().getTime) +
+                  " - Start: " + (df format srt))
           label.repaint()
         }
         
         def start = time.start
+        def stop  = time.stop
       }
       
       setContentPane(new JComponent {
         setLayout(new BorderLayout)
         add(label, BorderLayout.NORTH)
         add(srcComp, BorderLayout.WEST)
-        add(finComp, BorderLayout.EAST)
+        add(resComp, BorderLayout.EAST)
       })
+      
       pack
       setResizable(false)
       label.start
@@ -178,8 +181,8 @@ object Sobel extends App {
     val sharpOpRouter  = context.actorOf(Props(new ConvolveOp(tmp1Image, sharpenKernel)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpOpRouter")
     val noOpRouter     = context.actorOf(Props(new NoOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOpRouter")
     
-    var ops = List(blurRouter, sobelRouter, grayRouter, thresRouter, dilate1Router, invertRouter, dilate2Router)
-//  var ops = List(sobelRouter, noOpRouter)
+    var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, invertRouter)
+//  var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, dilate1Router, invertRouter, dilate2Router)
     
     override def receive = {
       case Start => {
@@ -195,12 +198,6 @@ object Sobel extends App {
       }
       
       case Stop => {
-          val g = config.resImage.getGraphics
-          g.drawImage(tmp2Image, 0, 0, null)
-          g.dispose
-
-          config.frame.update(config.frame.getGraphics)
-          
           println("Master Finish after " + (System.currentTimeMillis - start).millis)
           context.system.shutdown
       }
@@ -216,6 +213,13 @@ object Sobel extends App {
         if (noOfLines == height) {
           if (ops.isEmpty) {
             println("All steps done after " + (System.currentTimeMillis - start).millis)
+            
+            val g = config.resImage.getGraphics
+            g.drawImage(tmp2Image, 0, 0, null)
+            g.dispose
+            
+            config.frame.update(config.frame.getGraphics)
+            
             writer ! Write(tmp2Image, "end_" + fileName, FINISH_ID)
           } else {
             noOfLines = 0
