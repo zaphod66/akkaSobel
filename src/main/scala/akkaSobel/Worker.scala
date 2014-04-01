@@ -224,8 +224,35 @@ class BlurOp(image: BufferedImage) extends Worker {
 class MedianOp(image: BufferedImage, radius: Int) extends Worker {
   val width = image.getWidth
   
+  val K = ( (radius * 2  + 1) * (radius * 2  + 1) )
+  var pixel = new Array[Float](K)
+  
   override def calcResult(lineNo: Int): Array[Int] = {
     val lineResult = new Array[Int](width)
+
+    for (x <- 0 until width) {
+      var k = 0
+
+      for {
+        dY <- -radius to radius
+        dX <- -radius to radius
+        cY = lineNo + dY
+        cX = x + dX
+      } {
+        if (cY >= 0 && cY < image.getHeight && cX >= 0 && cX < width) {
+          val color = new Color(image.getRGB(cX, cY))
+          val gray  = ((color.getRed * 0.2126 + color.getGreen * 0.7152 + color.getBlue * 0.0722) / 255.0).toFloat
+          
+          pixel(k) = gray
+          k = k + 1
+        }
+      }
+      
+      val sp = pixel.sorted
+      val c = sp(K / 2).toFloat
+
+      lineResult(x) = new Color(c, c, c).getRGB
+    }
     
     lineResult
   }
