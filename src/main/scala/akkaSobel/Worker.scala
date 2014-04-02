@@ -64,7 +64,7 @@ trait Worker extends Actor {
 
 class SobelOp(image: BufferedImage) extends Worker {
   val width = image.getWidth
-    
+
   val Gy = Array(Array(-1.0, -2.0, -1.0), Array( 0.0, 0.0, 0.0), Array( 1.0, 2.0, 1.0))
   val Gx = Array(Array(-1.0,  0.0,  1.0), Array(-2.0, 0.0, 2.0), Array(-1.0, 0.0, 1.0))
   
@@ -85,6 +85,63 @@ class SobelOp(image: BufferedImage) extends Worker {
       }
       
       lineResult
+  }
+}
+
+class CannyOp(image: BufferedImage, val upperThres: Double, val lowerThres: Double) extends Worker {
+  val width = image.getWidth
+
+  val Gy = Array(Array(-1.0, -2.0, -1.0), Array( 0.0, 0.0, 0.0), Array( 1.0, 2.0, 1.0))
+  val Gx = Array(Array(-1.0,  0.0,  1.0), Array(-2.0, 0.0, 2.0), Array(-1.0, 0.0, 1.0))
+  
+  val thetaQ = Math.PI / 4.0
+  
+  override def calcResult(lineNo: Int): Array[Int] = {
+    val lineResult = new Array[Int](width)
+    
+    for (x <- 0 until width) {
+        val g0 = calcGradient(x, lineNo)
+        
+        val n  = neighbors(g0._2)
+        val g1 = calcGradient(x + n._1._1, lineNo + n._1._2)
+        val g2 = calcGradient(x + n._2._1, lineNo + n._2._2)
+
+        val color = if (g0._1 > upperThres) Color.WHITE.getRGB else if (g0._1 > lowerThres) Color.GRAY.getRGB else Color.BLACK.getRGB
+        val value = if ((g0._1 >= g1._1) && (g0._1 >= g2._1)) { color } else { Color.BLACK.getRGB }
+
+        lineResult(x) = value
+    }
+    
+    lineResult
+  }
+  
+  private def calcGradient(x: Int, y: Int): (Double, Int) = {
+    val xValue = mapImagePoint(image, x, y, Gx)
+    val yValue = mapImagePoint(image, x, y, Gy)
+    
+    val xGrad  = ( xValue._1 + xValue._2 + xValue._3 ) / 3.0
+    val yGrad  = ( yValue._1 + yValue._2 + yValue._3 ) / 3.0
+
+    val grad   = Math.sqrt(xGrad * xGrad + yGrad * yGrad)
+    
+    val theta  = Math.atan2(yGrad, xGrad)   // direction of gradient
+    val dir    = ( Math.round( theta.toFloat / thetaQ.toFloat ) + 4 ) % 4 // 0 -> 0, 45 -> 1, 90 -> 2, 135 -> 3, 180 -> 3, ...
+
+//        val thetaGrad = 180 / Math.PI * theta        
+//        println(s"xGrad = $xGrad, yGrad = $yGrad, theta = $theta (theta° = $thetaGrad), dir = $dir")
+
+//    println(s"x = $x, y = $y, grad = $grad, dir = $dir")
+    
+    (grad, dir)
+  }
+  
+  private def neighbors(dir: Int): ((Int, Int), (Int, Int)) = {
+    dir match {
+      case 0 => ((-1,  0), ( 1,  0))
+      case 1 => ((-1, -1), ( 1,  1))
+      case 2 => (( 0, -1), ( 0,  1))
+      case 3 => ((-1,  1), ( 1, -1))
+    }
   }
 }
 

@@ -169,6 +169,7 @@ object Sobel extends App {
     val writer = context.actorOf(Props(new ImageWriter(start)), name = "imageWriter")
 
     val sobelRouter    = context.actorOf(Props(new SobelOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
+    val cannyRouter    = context.actorOf(Props(new CannyOp(tmp1Image, 0.35, 0.15)).withRouter(RoundRobinRouter(noOfWorkers)), name = "cannyRouter")
     val grayRouter     = context.actorOf(Props(new GrayOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "grayRouter")
     val thresRouter    = context.actorOf(Props(new ThresholdOp(tmp1Image, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
     val invertRouter   = context.actorOf(Props(new InvertOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "invertRouter")
@@ -182,7 +183,8 @@ object Sobel extends App {
     val sharpOpRouter  = context.actorOf(Props(new ConvolveOp(tmp1Image, sharpenKernel)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpOpRouter")
     val noOpRouter     = context.actorOf(Props(new NoOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOpRouter")
 
-    var ops = List(medianRouter, sobelRouter, thresRouter, invertRouter)
+    var ops = List(blurRouter, cannyRouter, invertRouter)
+//  var ops = List(medianRouter, sobelRouter, thresRouter, invertRouter)
 //  var ops = List(blurRouter, sobelRouter, thresRouter, invertRouter, dilate1Router)
 //  var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, invertRouter)
 //  var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, dilate1Router, invertRouter, dilate2Router)
