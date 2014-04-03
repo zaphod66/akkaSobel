@@ -184,7 +184,6 @@ object Sobel extends App {
     val noOpRouter     = context.actorOf(Props(new NoOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOpRouter")
 
     var ops = List(blurRouter, cannyRouter, invertRouter)
-//  var ops = List(medianRouter, sobelRouter, thresRouter, invertRouter)
 //  var ops = List(blurRouter, sobelRouter, thresRouter, invertRouter, dilate1Router)
 //  var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, invertRouter)
 //  var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, dilate1Router, invertRouter, dilate2Router)
