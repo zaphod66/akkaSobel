@@ -22,8 +22,6 @@ trait Worker extends Actor {
     val by = ( sy - 1 ) / 2
     val bx = ( sx - 1 ) / 2
     
-//  println("mapImagePoint: (" + sx + ", " + sy + ") -> (" + bx + ", " + by + ")" )
-    
     for {
       dY <- -by to by
       dX <- -bx to bx

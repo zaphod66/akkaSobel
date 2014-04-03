@@ -19,6 +19,7 @@ import javax.swing.{JComponent, JFrame, JLabel, Timer}
 sealed trait OpMessage
 case object Start extends OpMessage
 case object Stop  extends OpMessage
+case object MasterFinish extends OpMessage
 case class Ops(ops: List[akka.actor.ActorRef])
 case class Work(lineNo: Int) extends OpMessage
 case class Result(lineNo: Int, lineResult: Array[Int]) extends OpMessage
@@ -168,9 +169,9 @@ object Sobel extends App {
 
     val writer = context.actorOf(Props(new ImageWriter(start)), name = "imageWriter")
 
-    val sobelRouter    = context.actorOf(Props(new SobelOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
+//  val sobelRouter    = context.actorOf(Props(new SobelOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
     val cannyRouter    = context.actorOf(Props(new CannyOp(tmp1Image, 0.35, 0.15)).withRouter(RoundRobinRouter(noOfWorkers)), name = "cannyRouter")
-    val grayRouter     = context.actorOf(Props(new GrayOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "grayRouter")
+//  val grayRouter     = context.actorOf(Props(new GrayOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "grayRouter")
     val thresRouter    = context.actorOf(Props(new ThresholdOp(tmp1Image, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
     val invertRouter   = context.actorOf(Props(new InvertOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "invertRouter")
     val dilate1Router  = context.actorOf(Props(new DilateOp(tmp1Image, 1, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate1Router")
@@ -183,7 +184,11 @@ object Sobel extends App {
     val sharpOpRouter  = context.actorOf(Props(new ConvolveOp(tmp1Image, sharpenKernel)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpOpRouter")
     val noOpRouter     = context.actorOf(Props(new NoOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "noOpRouter")
 
-    var ops = List(blurRouter, cannyRouter, invertRouter)
+    val sobelMaster    = context.actorOf(Props(new SobelMaster(tmp1Image, tmp2Image, noOfWorkers)), name = "sobelMaster")
+    val grayMaster     = context.actorOf(Props(new GrayMaster(tmp1Image, tmp2Image, noOfWorkers)), name = "grayMaster")
+  
+    var ops = List(sobelMaster, grayMaster)
+//  var ops = List(blurRouter, cannyRouter, invertRouter)
 //  var ops = List(blurRouter, sobelRouter, thresRouter, invertRouter, dilate1Router)
 //  var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, invertRouter)
 //  var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, dilate1Router, invertRouter, dilate2Router)
@@ -195,15 +200,52 @@ object Sobel extends App {
         val graphics = tmp1Image.getGraphics
         graphics.drawImage(srcImage, 0, 0, null)
         graphics.dispose        
-        
-        val router = ops.head
+
+        val master = ops.head
         ops = ops.tail
-        for (i <- 0 until height) router ! Work(i)
+        master ! Start
+        
+//        val router = ops.head
+//        ops = ops.tail
+//        for (i <- 0 until height) router ! Work(i)
+      }
+      
+      case MasterFinish => {
+        println("MasterFinish after " + (System.currentTimeMillis - start).millis)
+        
+        if (ops.isEmpty) {
+          println("All steps done after " + (System.currentTimeMillis - start).millis)
+
+          val g = config.resImage.getGraphics
+          g.drawImage(tmp2Image, 0, 0, null)
+          g.dispose
+  
+          config.frame.update(config.frame.getGraphics)
+
+          writer ! Write(tmp2Image, "end_" + fileName, FINISH_ID)
+        } else {
+          noOfLines = 0
+          println("Next step after " + (System.currentTimeMillis - start).millis)
+
+          val graphics = tmp1Image.getGraphics
+          graphics.drawImage(tmp2Image, 0, 0, null)
+          graphics.dispose
+
+          val g = config.resImage.getGraphics
+          g.drawImage(tmp2Image, 0, 0, null)
+          g.dispose
+
+          config.frame.update(config.frame.getGraphics)
+            
+          val master = ops.head
+          ops = ops.tail
+          master ! Start
+        }
       }
       
       case Stop => {
-          println("Master Finish after " + (System.currentTimeMillis - start).millis)
-          context.system.shutdown
+        println("Master Stop after " + (System.currentTimeMillis - start).millis)
+        context.system.shutdown
       }
       
       case Result(lineNo, lineResult) => {
