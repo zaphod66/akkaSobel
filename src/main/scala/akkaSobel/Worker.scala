@@ -333,9 +333,6 @@ class DilateOp(image: BufferedImage, radius: Int, thres: Int) extends Worker {
           if (Math.abs(rgb) > Math.abs(maxRGB)) {
             maxRGB = rgb
           }
-        
-      //  println(s"lineNo = $lineNo ===> x = $x, dX = $dX, dY = $dY, cX = $cX, cY = $cY => rgb = $rgb, maxRGB = $maxRGB")
-        
         }
       }
 
