@@ -79,3 +79,75 @@ class GrayMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWorkers: 
     }
   }
 }
+
+class ThresholdMaster(srcImage: BufferedImage, dstImage: BufferedImage, threshold: Int, noOfWorkers: Int) extends Actor {
+
+  var noOfLines: Int = _
+  var orgSender: ActorRef = _
+  
+  val start: Long = System.currentTimeMillis
+  val height = srcImage.getHeight
+  val width  = srcImage.getWidth
+
+  val thresRouter = context.actorOf(Props(new ThresholdOp(srcImage, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
+  
+  override def receive = {
+    case Start => {
+      println("Threshold step start after " + (System.currentTimeMillis - start).millis)
+      noOfLines = 0
+      orgSender = sender
+      for (i <- 0 until height) thresRouter ! Work(i)
+    }
+    
+    case Result(lineNo, lineResult) => {
+      noOfLines += 1
+
+      for (x <- 0 until width) yield {
+        val rgb = lineResult(x)
+        dstImage.setRGB(x, lineNo, rgb)
+      }
+
+      if (noOfLines == height) {
+        println("Threshold step done  after " + (System.currentTimeMillis - start).millis)
+        
+        orgSender ! MasterFinish
+      }
+    }
+  }  
+}
+
+class InvertMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWorkers: Int) extends Actor {
+
+  var noOfLines: Int = _
+  var orgSender: ActorRef = _
+  
+  val start: Long = System.currentTimeMillis
+  val height = srcImage.getHeight
+  val width  = srcImage.getWidth
+
+  val thresRouter = context.actorOf(Props(new InvertOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "invertRouter")
+  
+  override def receive = {
+    case Start => {
+      println("Invert step start after " + (System.currentTimeMillis - start).millis)
+      noOfLines = 0
+      orgSender = sender
+      for (i <- 0 until height) thresRouter ! Work(i)
+    }
+    
+    case Result(lineNo, lineResult) => {
+      noOfLines += 1
+
+      for (x <- 0 until width) yield {
+        val rgb = lineResult(x)
+        dstImage.setRGB(x, lineNo, rgb)
+      }
+
+      if (noOfLines == height) {
+        println("Invert step done  after " + (System.currentTimeMillis - start).millis)
+        
+        orgSender ! MasterFinish
+      }
+    }
+  }  
+}

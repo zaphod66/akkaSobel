@@ -169,10 +169,7 @@ object Sobel extends App {
 
     val writer = context.actorOf(Props(new ImageWriter(start)), name = "imageWriter")
 
-//  val sobelRouter    = context.actorOf(Props(new SobelOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
     val cannyRouter    = context.actorOf(Props(new CannyOp(tmp1Image, 0.35, 0.15)).withRouter(RoundRobinRouter(noOfWorkers)), name = "cannyRouter")
-//  val grayRouter     = context.actorOf(Props(new GrayOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "grayRouter")
-    val thresRouter    = context.actorOf(Props(new ThresholdOp(tmp1Image, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
     val invertRouter   = context.actorOf(Props(new InvertOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "invertRouter")
     val dilate1Router  = context.actorOf(Props(new DilateOp(tmp1Image, 1, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate1Router")
     val dilate2Router  = context.actorOf(Props(new DilateOp(tmp1Image, 2, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilate2Router")
@@ -186,8 +183,10 @@ object Sobel extends App {
 
     val sobelMaster    = context.actorOf(Props(new SobelMaster(tmp1Image, tmp2Image, noOfWorkers)), name = "sobelMaster")
     val grayMaster     = context.actorOf(Props(new GrayMaster(tmp1Image, tmp2Image, noOfWorkers)), name = "grayMaster")
+    val thresMaster    = context.actorOf(Props(new ThresholdMaster(tmp1Image, tmp2Image, threshold, noOfWorkers)), name = "thresMaster")
+    val invertMaster     = context.actorOf(Props(new InvertMaster(tmp1Image, tmp2Image, noOfWorkers)), name = "invertMaster")
   
-    var ops = List(sobelMaster, grayMaster)
+    var ops = List(sobelMaster, grayMaster, thresMaster, invertMaster)
 //  var ops = List(blurRouter, cannyRouter, invertRouter)
 //  var ops = List(blurRouter, sobelRouter, thresRouter, invertRouter, dilate1Router)
 //  var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, invertRouter)
@@ -211,7 +210,7 @@ object Sobel extends App {
       }
       
       case MasterFinish => {
-        println("MasterFinish after " + (System.currentTimeMillis - start).millis)
+//      println("MasterFinish after " + (System.currentTimeMillis - start).millis)
         
         if (ops.isEmpty) {
           println("All steps done after " + (System.currentTimeMillis - start).millis)
