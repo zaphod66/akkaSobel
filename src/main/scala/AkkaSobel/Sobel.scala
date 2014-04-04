@@ -170,10 +170,6 @@ object Sobel extends App {
     val writer = context.actorOf(Props(new ImageWriter(start)), name = "imageWriter")
 
     val cannyRouter    = context.actorOf(Props(new CannyOp(tmp1Image, 0.35, 0.15)).withRouter(RoundRobinRouter(noOfWorkers)), name = "cannyRouter")
-    val blurRouter     = context.actorOf(Props(new BlurOp(tmp1Image)).withRouter(RoundRobinRouter(noOfWorkers)), name = "blurRouter")
-    val sharpenRouter  = context.actorOf(Props(new SharpenOp(tmp1Image, 0.1)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter")
-    val embossRouter   = context.actorOf(Props(new ConvolveOp(tmp1Image, embossKernel2)).withRouter(RoundRobinRouter(noOfWorkers)), name = "embossRouter")
-    val sharpOpRouter  = context.actorOf(Props(new ConvolveOp(tmp1Image, sharpenKernel)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpOpRouter")
 
     val sobelMaster    = context.actorOf(Props(new SobelMaster(tmp1Image, tmp2Image, noOfWorkers)), name = "sobelMaster")
     val grayMaster     = context.actorOf(Props(new GrayMaster(tmp1Image, tmp2Image, noOfWorkers)), name = "grayMaster")
@@ -182,14 +178,15 @@ object Sobel extends App {
     val dilate1Master  = context.actorOf(Props(new DilateMaster(tmp1Image, tmp2Image, 1, threshold, noOfWorkers)), name = "dilate1Master")
     val medianMaster   = context.actorOf(Props(new MedianMaster(tmp1Image, tmp2Image, 2, noOfWorkers)), name = "medianMaster")
     val blurMaster     = context.actorOf(Props(new BlurMaster(tmp1Image, tmp2Image, noOfWorkers)), name = "blurMaster")
+    val embossMaster   = context.actorOf(Props(new ConvolveMaster(tmp1Image, tmp2Image, noOfWorkers, embossKernel2, "Emboss")), name = "embossMaster")
+    val sharpOpMaster  = context.actorOf(Props(new ConvolveMaster(tmp1Image, tmp2Image, noOfWorkers, sharpenKernel, "Sharpen")), name = "sharpOpMaster")
+    
+    val cannyMaster    = context.actorOf(Props(new CannyMaster(tmp1Image, tmp2Image, noOfWorkers, 0.45, 0.22)), name = "cannyMaster")
     val noOpMaster     = context.actorOf(Props(new NoOpMaster(tmp1Image, tmp2Image)), name = "NoOpMaster")
     
-//  var ops = List(noOpMaster, medianMaster, sobelMaster, grayMaster, thresMaster, invertMaster, dilate1Master)
-    var ops = List(noOpMaster, medianMaster)
+    var ops = List(blurMaster, cannyMaster, invertMaster)
+//  var ops = List(sharpOpMaster, grayMaster, embossMaster)
 //  var ops = List(blurRouter, cannyRouter, invertRouter)
-//  var ops = List(blurRouter, sobelRouter, thresRouter, invertRouter, dilate1Router)
-//  var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, invertRouter)
-//  var ops = List(blurRouter, grayRouter, sobelRouter, thresRouter, dilate1Router, invertRouter, dilate2Router)
     
     override def receive = {
       case Start => {
@@ -202,15 +199,9 @@ object Sobel extends App {
         val master = ops.head
         ops = ops.tail
         master ! Start
-        
-//        val router = ops.head
-//        ops = ops.tail
-//        for (i <- 0 until height) router ! Work(i)
       }
       
       case MasterFinish => {
-//      println("MasterFinish after " + (System.currentTimeMillis - start).millis)
-        
         if (ops.isEmpty) {
           println("All steps done after " + (System.currentTimeMillis - start).millis)
 
@@ -223,7 +214,7 @@ object Sobel extends App {
           writer ! Write(tmp2Image, "end_" + fileName, FINISH_ID)
         } else {
           noOfLines = 0
-          println("Next step after " + (System.currentTimeMillis - start).millis)
+        //println("Next step after " + (System.currentTimeMillis - start).millis)
 
           val graphics = tmp1Image.getGraphics
           graphics.drawImage(tmp2Image, 0, 0, null)
@@ -245,47 +236,7 @@ object Sobel extends App {
         println("Master Stop after " + (System.currentTimeMillis - start).millis)
         context.system.shutdown
       }
-      
-      case Result(lineNo, lineResult) => {
-        noOfLines += 1
-        
-        for (x <- 0 until width) yield {
-          val rgb = lineResult(x)
-          tmp2Image.setRGB(x, lineNo, rgb)
-        }
-        
-        if (noOfLines == height) {
-          if (ops.isEmpty) {
-            println("All steps done after " + (System.currentTimeMillis - start).millis)
-            
-            val g = config.resImage.getGraphics
-            g.drawImage(tmp2Image, 0, 0, null)
-            g.dispose
-            
-            config.frame.update(config.frame.getGraphics)
-            
-            writer ! Write(tmp2Image, "end_" + fileName, FINISH_ID)
-          } else {
-            noOfLines = 0
-            println("Step done after " + (System.currentTimeMillis - start).millis)
 
-            val graphics = tmp1Image.getGraphics
-            graphics.drawImage(tmp2Image, 0, 0, null)
-            graphics.dispose
-
-            val g = config.resImage.getGraphics
-            g.drawImage(tmp2Image, 0, 0, null)
-            g.dispose
-
-            config.frame.update(config.frame.getGraphics)
-            
-            val router = ops.head
-            ops = ops.tail
-            for (i <- 0 until height) router ! Work(i)
-          }
-        }
-      }
-      
       case WriteFinished(id) => {
         if (id == FINISH_ID) {
           self ! Stop

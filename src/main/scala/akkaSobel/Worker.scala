@@ -125,11 +125,6 @@ class CannyOp(image: BufferedImage, val upperThres: Double, val lowerThres: Doub
     val theta  = Math.atan2(yGrad, xGrad)   // direction of gradient
     val dir    = ( Math.round( theta.toFloat / thetaQ.toFloat ) + 4 ) % 4 // 0 -> 0, 45 -> 1, 90 -> 2, 135 -> 3, 180 -> 3, ...
 
-//        val thetaGrad = 180 / Math.PI * theta        
-//        println(s"xGrad = $xGrad, yGrad = $yGrad, theta = $theta (theta° = $thetaGrad), dir = $dir")
-
-//    println(s"x = $x, y = $y, grad = $grad, dir = $dir")
-    
     (grad, dir)
   }
   
