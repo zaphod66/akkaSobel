@@ -151,3 +151,22 @@ class InvertMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWorkers
     }
   }  
 }
+
+class NoOpMaster(srcImage: BufferedImage, dstImage: BufferedImage) extends Actor {
+
+  val start: Long = System.currentTimeMillis
+  
+  override def receive = {
+    case Start => {
+      println("NoOp step start after " + (System.currentTimeMillis - start).millis)
+
+      val g = dstImage.getGraphics()
+      g.drawImage(srcImage, 0, 0, null)
+      g.dispose
+      
+      println("NoOp step done  after " + (System.currentTimeMillis - start).millis)
+
+      sender ! MasterFinish
+    }
+  }
+}
