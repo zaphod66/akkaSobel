@@ -275,7 +275,10 @@ class MedianOp(image: BufferedImage, radius: Int) extends Worker {
   val width = image.getWidth
   
   val K = ( (radius * 2  + 1) * (radius * 2  + 1) )
-  var pixel = new Array[Float](K)
+  var pixel  = new Array[Float](K)
+  var pixelR = new Array[Float](K)
+  var pixelG = new Array[Float](K)
+  var pixelB = new Array[Float](K)
   
   override def calcResult(lineNo: Int): Array[Int] = {
     val lineResult = new Array[Int](width)
@@ -291,17 +294,28 @@ class MedianOp(image: BufferedImage, radius: Int) extends Worker {
       } {
         if (cY >= 0 && cY < image.getHeight && cX >= 0 && cX < width) {
           val color = new Color(image.getRGB(cX, cY))
-          val gray  = ((color.getRed * 0.2126 + color.getGreen * 0.7152 + color.getBlue * 0.0722) / 255.0).toFloat
+//        val gray  = ((color.getRed * 0.2126 + color.getGreen * 0.7152 + color.getBlue * 0.0722) / 255.0).toFloat
+          val red   = color.getRed   / 255.0
+          val green = color.getGreen / 255.0
+          val blue  = color.getBlue  / 255.0
           
-          pixel(k) = gray
+//        pixel(k)  = gray
+          pixelR(k) = red.toFloat
+          pixelG(k) = green.toFloat
+          pixelB(k) = blue.toFloat
           k = k + 1
         }
       }
-      
-      val sp = pixel.sorted
-      val c = sp(K / 2).toFloat
+            
+//    val sp = pixel.sorted
+//    val c = sp(K / 2).toFloat
+//    lineResult(x) = new Color(c, c, c).getRGB
 
-      lineResult(x) = new Color(c, c, c).getRGB
+      val spR = pixelR.sorted
+      val spG = pixelG.sorted
+      val spB = pixelB.sorted
+      
+      lineResult(x) = new Color(spR(K/2).toFloat,spG(K/2).toFloat,spB(K/2).toFloat).getRGB
     }
     
     lineResult

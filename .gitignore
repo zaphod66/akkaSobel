@@ -2,6 +2,7 @@
 *.log
 *.jpg
 *.png
+*.gif
 
 # sbt specific
 dist/*
