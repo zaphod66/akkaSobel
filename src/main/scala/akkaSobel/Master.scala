@@ -4,7 +4,7 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 
 import akka.actor._
-import akka.routing.RoundRobinRouter
+import akka.routing.{RoundRobinPool}
 
 import java.awt.image.BufferedImage
 import java.awt.Color
@@ -49,61 +49,61 @@ abstract class OpMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWo
 class SobelMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWorkers: Int) extends OpMaster(srcImage, dstImage, noOfWorkers) {
 
   val name = "Sobel"
-  val router = context.actorOf(Props(new SobelOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sobelRouter")
+  val router = context.actorOf(Props(new SobelOp(srcImage)).withRouter(RoundRobinPool(noOfWorkers)), name = "sobelRouter")
 
 }
 
 class GrayMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWorkers: Int) extends OpMaster(srcImage, dstImage, noOfWorkers) {
 
   val name = "Gray"
-  val router = context.actorOf(Props(new GrayOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "grayRouter")
+  val router = context.actorOf(Props(new GrayOp(srcImage)).withRouter(RoundRobinPool(noOfWorkers)), name = "grayRouter")
 
 }
 
 class ThresholdMaster(srcImage: BufferedImage, dstImage: BufferedImage, threshold: Int, noOfWorkers: Int) extends OpMaster(srcImage, dstImage, noOfWorkers) {
 
   override val name = "Threshold"
-  override val router = context.actorOf(Props(new ThresholdOp(srcImage, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "thresRouter")
+  override val router = context.actorOf(Props(new ThresholdOp(srcImage, threshold)).withRouter(RoundRobinPool(noOfWorkers)), name = "thresRouter")
 
 }
 
 class InvertMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWorkers: Int) extends OpMaster(srcImage, dstImage, noOfWorkers) {
 
   override val name   = "Invert"
-  override val router = context.actorOf(Props(new InvertOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "invertRouter")
+  override val router = context.actorOf(Props(new InvertOp(srcImage)).withRouter(RoundRobinPool(noOfWorkers)), name = "invertRouter")
   
 }
 
 class DilateMaster(srcImage: BufferedImage, dstImage: BufferedImage, radius: Int, threshold: Int, noOfWorkers: Int) extends OpMaster(srcImage, dstImage, noOfWorkers) {
 
   override val name   = "Dilate"
-  override val router = context.actorOf(Props(new DilateOp(srcImage, radius, threshold)).withRouter(RoundRobinRouter(noOfWorkers)), name = "dilateRouter")
+  override val router = context.actorOf(Props(new DilateOp(srcImage, radius, threshold)).withRouter(RoundRobinPool(noOfWorkers)), name = "dilateRouter")
 
 }
 
 class MedianMaster(srcImage: BufferedImage, dstImage: BufferedImage, radius: Int, noOfWorkers: Int) extends OpMaster(srcImage, dstImage, noOfWorkers) {
 
   override val name = "Median"  
-  override val router = context.actorOf(Props(new MedianOp(srcImage, radius)).withRouter(RoundRobinRouter(noOfWorkers)), name = "medianRouter")
+  override val router = context.actorOf(Props(new MedianOp(srcImage, radius)).withRouter(RoundRobinPool(noOfWorkers)), name = "medianRouter")
 
 }
 
 class BlurMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWorkers: Int) extends OpMaster(srcImage, dstImage, noOfWorkers) {
 
   override val name   = "Blur"
-  override val router = context.actorOf(Props(new BlurOp(srcImage)).withRouter(RoundRobinRouter(noOfWorkers)), name = "blurRouter")
+  override val router = context.actorOf(Props(new BlurOp(srcImage)).withRouter(RoundRobinPool(noOfWorkers)), name = "blurRouter")
 
 }
 
 class SharpenMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWorkers: Int, c: Double) extends OpMaster(srcImage, dstImage, noOfWorkers)
 {
   override val name = "Sharpen"
-  override val router = context.actorOf(Props(new SharpenOp(srcImage, c)).withRouter(RoundRobinRouter(noOfWorkers)), name = "sharpenRouter")
+  override val router = context.actorOf(Props(new SharpenOp(srcImage, c)).withRouter(RoundRobinPool(noOfWorkers)), name = "sharpenRouter")
 }
 
 class ConvolveMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWorkers: Int, kernel: Array[Array[Double]], conName: String) extends OpMaster(srcImage, dstImage, noOfWorkers) {
   override val name = conName
-  override val router = context.actorOf(Props(new ConvolveOp(srcImage, kernel)).withRouter(RoundRobinRouter(noOfWorkers)), name = conName + "Router")
+  override val router = context.actorOf(Props(new ConvolveOp(srcImage, kernel)).withRouter(RoundRobinPool(noOfWorkers)), name = conName + "Router")
 }
 
 // ===============================================================================
@@ -237,8 +237,8 @@ class CannyMaster(srcImage: BufferedImage, dstImage: BufferedImage, noOfWorkers:
 
   val gradient = Array.ofDim[(Double, Int)](height, width)  // gradients (magnitude, direction)
   
-  val gradRouter = context.actorOf(Props(new GradientOp).withRouter(RoundRobinRouter(noOfWorkers)), name = "cannyGradRouter")
-  val suppRouter = context.actorOf(Props(new SuppressOp).withRouter(RoundRobinRouter(noOfWorkers)), name = "cannySuppRouter")
+  val gradRouter = context.actorOf(Props(new GradientOp).withRouter(RoundRobinPool(noOfWorkers)), name = "cannyGradRouter")
+  val suppRouter = context.actorOf(Props(new SuppressOp).withRouter(RoundRobinPool(noOfWorkers)), name = "cannySuppRouter")
   
   override def receive = {
     case Start => {

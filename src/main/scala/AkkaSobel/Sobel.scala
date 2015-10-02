@@ -1,7 +1,7 @@
 package akkaSobel
 
 import akka.actor._
-import akka.routing.RoundRobinRouter
+import akka.routing.RoundRobinPool
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
@@ -26,9 +26,9 @@ case class Result(lineNo: Int, lineResult: Array[Int]) extends OpMessage
 case class Write(image: BufferedImage, fileName: String, id: Int) extends OpMessage
 case class WriteFinished(id: Int) extends OpMessage
 
-object Sobel extends App {
+object Sobel {
     
-  override def main(args: Array[String]): Unit = {
+  def main(args: Array[String]): Unit = {
     if (args.length < 2 || args.length > 3) {
       println("Usage: SobelApp <Image> <noOfWorkers> [<threshold>]")
       return
@@ -169,7 +169,7 @@ object Sobel extends App {
 
     val writer = context.actorOf(Props(new ImageWriter(start)), name = "imageWriter")
 
-    val cannyRouter    = context.actorOf(Props(new CannyOp(tmp1Image, 0.35, 0.15)).withRouter(RoundRobinRouter(noOfWorkers)), name = "cannyRouter")
+    val cannyRouter    = context.actorOf(Props(new CannyOp(tmp1Image, 0.35, 0.15)).withRouter(RoundRobinPool(noOfWorkers)), name = "cannyRouter")
 
     val sobelMaster    = context.actorOf(Props(new SobelMaster(tmp1Image, tmp2Image, noOfWorkers)), name = "sobelMaster")
     val grayMaster     = context.actorOf(Props(new GrayMaster(tmp1Image, tmp2Image, noOfWorkers)), name = "grayMaster")
@@ -211,7 +211,7 @@ object Sobel extends App {
   
           config.frame.update(config.frame.getGraphics)
 
-          writer ! Write(tmp2Image, "end_" + fileName, FINISH_ID)
+          writer ! Write(tmp2Image, fileName + "_END.JPG", FINISH_ID)
         } else {
           noOfLines = 0
         //println("Next step after " + (System.currentTimeMillis - start).millis)
@@ -234,7 +234,7 @@ object Sobel extends App {
       
       case Stop => {
         println("Master Stop after " + (System.currentTimeMillis - start).millis)
-        context.system.shutdown
+        context.system.terminate
       }
 
       case WriteFinished(id) => {
