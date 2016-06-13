@@ -33,7 +33,7 @@ object TestImageMonad {
                                                   //| rleavedRaster: width = 3264 height = 2448 #Bands = 4 xOff = 0 yOff = 0 dataO
                                                   //| ffset[0] 0
                                                   
-  println("writeing...")                          //> writeing...
+  println("writing...")                          //> writing...
   ImageIO.write(imageout, "png", new File("/users/nschelle/Downloads/ImageMonad.png"))
                                                   //> res0: Boolean = true
 }
